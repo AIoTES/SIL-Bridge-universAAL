@@ -54,5 +54,8 @@ local.properties
 hs_err_pid*
 
 # IntelliJ
-.idea
+.idea/
 *.iml
+
+# Maven
+target/
