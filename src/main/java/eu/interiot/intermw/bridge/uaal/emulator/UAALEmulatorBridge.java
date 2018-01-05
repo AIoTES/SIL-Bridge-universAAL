@@ -59,7 +59,7 @@ import static spark.Spark.post;
 
 @eu.interiot.intermw.bridge.annotations.Bridge(platformType = "UniversAALEmulated")
 public class UAALEmulatorBridge extends AbstractBridge {
-    private final String BASE_PATH = "http://localhost";
+    private final String BASE_PATH = "http://intermw"; // TODO: retrieve this value from configuration
 
     private final Logger log = LoggerFactory.getLogger(UAALEmulatorBridge.class);
 
