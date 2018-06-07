@@ -296,7 +296,7 @@ public class UAALBridge extends AbstractBridge {
 			.replace(Body.TYPE, thingType);
 		bodyC = Body.CREATE_PUBLISHER
 			.replace(Body.ID, getSuffix(thingId));
-		//TODO registerServiceCallback
+		registerServiceCallback(getSuffix(thingId));
 		UAALClient.post(url + "spaces/" + space + "/service/callees/", usr, pwd, JSON, bodyS);
 		UAALClient.post(url + "spaces/" + space + "/context/publishers/", usr, pwd, JSON, bodyC);
 		//responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
@@ -340,7 +340,7 @@ public class UAALBridge extends AbstractBridge {
 			.replace(Body.PORT, callback_port)
 			.replace(Body.PATH_S, CALLBACK_PATH_SERVICE)
 			.replace(Body.TYPE, thingType);
-		//TODO registerServiceCallback?
+		registerServiceCallback(getSuffix(thingId));
 		UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffix(thingId), usr, pwd, JSON, bodyS);
 		//responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
 		responseMsg.getMetadata().setStatus("OK"); //TODO Why is this not in FIWARE?
@@ -526,7 +526,7 @@ public class UAALBridge extends AbstractBridge {
 	// TODO UNREGISTER!!! vs CONTEXT/:conversationId { req.params(":conversationId") }
 
 	post(CALLBACK_PATH_CONTEXT + conversationId, (req, res) -> {
-	    log.debug("CONTEXT CALLBACK -> Got message from uaal");
+	    log.debug("CONTEXT CALLBACK -> Got event from uaal");
 	    Message messageForInterIoT = new Message();
 	    // Metadata
 	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
@@ -545,6 +545,41 @@ public class UAALBridge extends AbstractBridge {
 	    log.debug("CONTEXT CALLBACK -> Publish message to interiot");
 	    publisher.publish(messageForInterIoT);
 	    log.debug("CONTEXT CALLBACK -> After publish. Msg: \n"+messageForInterIoT.serializeToJSONLD());
+	    res.status(200);
+	    return "";
+	});
+    }
+    
+    private void registerServiceCallback(String deviceId) throws BrokerException {
+	// When a call is requested from uaal, uAAL REST will send it to this
+	// RESTlet. Build a Message with a Query? and push it to InterIoT (?).
+	// Post the response back to uAAL
+
+	// TODO UNREGISTER!!! vs SERVICE/:deviceId { req.params(":deviceId") }
+
+	post(CALLBACK_PATH_SERVICE + deviceId, (req, res) -> {
+	    log.debug("SERVICE CALLBACK -> Got request from uaal");
+	    String originalCall = req.queryParams("o");
+	    Message messageForInterIoT = new Message();
+	    // TODO Metadata
+	    // TODO Payload
+	    // Send to InterIoT
+	    log.debug("SERVICE CALLBACK -> Send request to interiot");
+	    publisher.publish(messageForInterIoT);
+	    // TODO Get response from interiot ???
+	    log.debug("SERVICE CALLBACK -> After request. Msg:.... \n");
+	    String body = "";// TODO turn response into ServiceResponse ???
+	    new Thread() { // TODO Pool?
+		public void run() {
+		    try { // TODO Delay so that 200 is sent before this happens
+			UAALClient.post(url+"spaces/"+space+"/service/callees/"+deviceId+"?o="+originalCall,
+				usr, pwd, JSON, body);
+		    } catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		    }
+		}
+	    }.start();
 	    res.status(200);
 	    return "";
 	});
