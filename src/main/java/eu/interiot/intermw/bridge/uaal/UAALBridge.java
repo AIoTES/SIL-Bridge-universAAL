@@ -34,22 +34,27 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Strings;
 
 import eu.interiot.intermw.bridge.abstracts.AbstractBridge;
-import eu.interiot.intermw.bridge.annotations.Bridge;
 import eu.interiot.intermw.bridge.uaal.client.Body;
 import eu.interiot.intermw.bridge.uaal.client.UAALClient;
 import eu.interiot.intermw.comm.broker.exceptions.BrokerException;
 import eu.interiot.intermw.commons.exceptions.MiddlewareException;
 import eu.interiot.intermw.commons.interfaces.Configuration;
+import eu.interiot.intermw.commons.model.IoTDevice;
 import eu.interiot.intermw.commons.model.Platform;
+import eu.interiot.intermw.commons.requests.PlatformCreateDeviceReq;
+import eu.interiot.intermw.commons.requests.PlatformDeleteDeviceReq;
+import eu.interiot.intermw.commons.requests.PlatformUpdateDeviceReq;
 import eu.interiot.message.Message;
 import eu.interiot.message.MessageMetadata;
 import eu.interiot.message.MessagePayload;
+import eu.interiot.message.ID.EntityID;
 import eu.interiot.message.managers.URI.URIManagerMessageMetadata;
 import eu.interiot.message.managers.URI.URIManagerMessageMetadata.MessageTypesEnum;
 import eu.interiot.message.metadata.PlatformMessageMetadata;
 
-@Bridge(platformType = "UniversAAL")
+@eu.interiot.intermw.bridge.annotations.Bridge(platformType = "http://inter-iot.eu/UniversAAL")
 public class UAALBridge extends AbstractBridge {
+    private final static String PROPERTIES_PREFIX = "universaal-";
     private final static String CALLBACK_PATH = "/receiver/";
     private final static String CALLBACK_PATH_CONTEXT = CALLBACK_PATH+"context/";
     private final static String CALLBACK_PATH_SERVICE = CALLBACK_PATH+"service/";
@@ -71,12 +76,12 @@ public class UAALBridge extends AbstractBridge {
 
 	Properties properties = configuration.getProperties();
 	try {
-	    url = properties.getProperty("universaal.url");
-	    usr = properties.getProperty("universaal.user");
-	    pwd = properties.getProperty("universaal.password");
-	    space = properties.getProperty("universaal.space");
-	    callback_host = properties.getProperty("bridge-callback-host");
-	    callback_port = properties.getProperty("bridge-callback-port");
+	    url = properties.getProperty(PROPERTIES_PREFIX + "url");
+	    usr = properties.getProperty(PROPERTIES_PREFIX + "user");
+	    pwd = properties.getProperty(PROPERTIES_PREFIX + "password");
+	    space = properties.getProperty(PROPERTIES_PREFIX + "space");
+	    callback_host = properties.getProperty(PROPERTIES_PREFIX + "callback-host");
+	    callback_port = properties.getProperty(PROPERTIES_PREFIX + "callback-port");
 	} catch (Exception e) {
 	    throw new MiddlewareException(
 		    "Failed to read UAALBridge configuration: "
@@ -125,8 +130,7 @@ public class UAALBridge extends AbstractBridge {
 		UAALClient.post(url + "spaces/", usr, pwd, JSON, bodySpace);
 		UAALClient.post(url + "spaces/" + space + "/service/callers/", usr, pwd, JSON, bodyCaller);
 	    } catch (Exception e) {
-		log.error("Error sending request to uAAL at registerPlatform: " + e);
-		e.printStackTrace();
+		log.error("Error sending request to uAAL at registerPlatform", e);
 	    }
 	} // else Not INIT, don't create Space because it is already created
 	
@@ -156,8 +160,7 @@ public class UAALBridge extends AbstractBridge {
 	try {
 	    UAALClient.delete(url + "spaces/" + space, usr, pwd);
 	} catch (Exception e) {
-	    log.error("Error sending request to uAAL at unregisterPlatform: " + e);
-	    e.printStackTrace();
+	    log.error("Error sending request to uAAL at unregisterPlatform", e);
 	}
 
 	log.info("Completed unregisterPlatform");
@@ -210,8 +213,7 @@ public class UAALBridge extends AbstractBridge {
 //	    responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
 	    responseMsg.getMetadata().setStatus("OK");
 	} catch (Exception e) {
-	    log.error("Error sending request to uAAL at subscribe: " + e);
-	    e.printStackTrace();
+	    log.error("Error sending request to uAAL at subscribe", e);
 	    responseMsg.getMetadata().setStatus("KO");
 	    responseMsg.getMetadata().setMessageType(MessageTypesEnum.ERROR);
 	    responseMsg.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
@@ -239,8 +241,7 @@ public class UAALBridge extends AbstractBridge {
 //	    responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
 	    responseMsg.getMetadata().setStatus("OK");
 	} catch (Exception e) {
-	    log.error("Error sending request to uAAL at unsubscribe: " + e);
-	    e.printStackTrace();
+	    log.error("Error sending request to uAAL at unsubscribe" , e);
 	    responseMsg.getMetadata().setStatus("KO");
 	    responseMsg.getMetadata().setMessageType(MessageTypesEnum.ERROR);
 	    responseMsg.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
@@ -254,7 +255,7 @@ public class UAALBridge extends AbstractBridge {
     // ------------------------------------------
 
     @Override
-    public Message platformCreateDevice(Message msg) throws Exception {
+    public Message platformCreateDevices(Message msg) throws Exception {
 	// An instruction for a platform to start managing (i.e. create) a new
 	// device.
 
@@ -280,26 +281,29 @@ public class UAALBridge extends AbstractBridge {
 	log.info("Entering platformCreateDevice");
 	
 	Message responseMsg = createResponseMessage(msg);
-	String thingId = "";// TODO
-	String thingType = "http://ontology.universaal.org/PhThing.owl#Device";// TODO
-	String bodyS = Body.CREATE_CALLEE
-		.replace(Body.ID, getSuffix(thingId))
-		.replace(Body.HOST, callback_host)
-		.replace(Body.PORT, callback_port)
-		.replace(Body.PATH_S, CALLBACK_PATH_SERVICE)
-		.replace(Body.TYPE, thingType);
-	String bodyC = Body.CREATE_PUBLISHER
-		.replace(Body.ID, getSuffix(thingId));
+	PlatformCreateDeviceReq req = new PlatformCreateDeviceReq(msg);
+	String thingId, thingType, bodyS, bodyC;
 
 	try {
-	    //TODO registerServiceCallback
-	    UAALClient.post(url + "spaces/" + space + "/service/callees/", usr, pwd, JSON, bodyS);
-	    UAALClient.post(url + "spaces/" + space + "/context/publishers/", usr, pwd, JSON, bodyC);
-//	    responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
+	    for (IoTDevice iotDevice : req.getDevices()) {
+		thingId = iotDevice.getDeviceId();// TODO Check which format. Need to get suffix?
+		thingType = "http://ontology.universaal.org/PhThing.owl#Device";// TODO
+		bodyS = Body.CREATE_CALLEE
+			.replace(Body.ID, getSuffix(thingId))
+			.replace(Body.HOST, callback_host)
+			.replace(Body.PORT, callback_port)
+			.replace(Body.PATH_S, CALLBACK_PATH_SERVICE)
+			.replace(Body.TYPE, thingType);
+		bodyC = Body.CREATE_PUBLISHER
+			.replace(Body.ID, getSuffix(thingId));
+		//TODO registerServiceCallback
+		UAALClient.post(url + "spaces/" + space + "/service/callees/", usr, pwd, JSON, bodyS);
+		UAALClient.post(url + "spaces/" + space + "/context/publishers/", usr, pwd, JSON, bodyC);
+		//responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
+	    }
 	    responseMsg.getMetadata().setStatus("OK");
 	} catch (Exception e) {
-	    log.error("Error sending request to uAAL at subscribe: " + e);
-	    e.printStackTrace();
+	    log.error("Error sending request to uAAL at subscribe", e);
 	    responseMsg.getMetadata().setStatus("KO");
 	    responseMsg.getMetadata().setMessageType(MessageTypesEnum.ERROR);
 	    responseMsg.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
@@ -311,7 +315,7 @@ public class UAALBridge extends AbstractBridge {
     }
 
     @Override
-    public Message platformUpdateDevice(Message msg) throws Exception {
+    public Message platformUpdateDevices(Message msg) throws Exception {
 	// An instruction for a platform to update information about a device it
 	// is managing
 
@@ -323,23 +327,26 @@ public class UAALBridge extends AbstractBridge {
 	log.info("Entering platformUpdateDevice");
 	
 	Message responseMsg = createResponseMessage(msg);
-	String thingId = "";// TODO
-	String thingType = "http://ontology.universaal.org/PhThing.owl#Device";// TODO
-	String bodyS=Body.CREATE_CALLEE
-		.replace(Body.ID, getSuffix(thingId))
-		.replace(Body.HOST, callback_host)
-		.replace(Body.PORT, callback_port)
-		.replace(Body.PATH_S, CALLBACK_PATH_SERVICE)
-		.replace(Body.TYPE, thingType);
+	PlatformUpdateDeviceReq req = new PlatformUpdateDeviceReq(msg);
+	String thingId, thingType, bodyS;
 
 	try {
-	    //TODO registerServiceCallback?
-	    UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffix(thingId), usr, pwd, JSON, bodyS);
-//	    responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
-	    responseMsg.getMetadata().setStatus("OK"); //TODO Why is this not in FIWARE?
+	    for (IoTDevice iotDevice : req.getDevices()) {
+		thingId = iotDevice.getDeviceId();// TODO Check which format. Need to get suffix?
+		thingType = "http://ontology.universaal.org/PhThing.owl#Device";// TODO
+		bodyS=Body.CREATE_CALLEE
+			.replace(Body.ID, getSuffix(thingId))
+			.replace(Body.HOST, callback_host)
+			.replace(Body.PORT, callback_port)
+			.replace(Body.PATH_S, CALLBACK_PATH_SERVICE)
+			.replace(Body.TYPE, thingType);
+		//TODO registerServiceCallback?
+		UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffix(thingId), usr, pwd, JSON, bodyS);
+		//responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
+		responseMsg.getMetadata().setStatus("OK"); //TODO Why is this not in FIWARE?
+	    }
 	} catch (Exception e) {
-	    log.error("Error sending request to uAAL at subscribe: " + e);
-	    e.printStackTrace();
+	    log.error("Error sending request to uAAL at subscribe", e);
 	    responseMsg.getMetadata().setStatus("KO");
 	    responseMsg.getMetadata().setMessageType(MessageTypesEnum.ERROR);
 	    responseMsg.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
@@ -351,7 +358,7 @@ public class UAALBridge extends AbstractBridge {
     }
 
     @Override
-    public Message platformDeleteDevice(Message msg) throws Exception {
+    public Message platformDeleteDevices(Message msg) throws Exception {
 	// An instruction for a platform to stop managing (i.e. remove) a
 	// device.
 
@@ -361,17 +368,20 @@ public class UAALBridge extends AbstractBridge {
 	log.info("Entering platformDeleteDevice");
 
 	Message responseMsg = createResponseMessage(msg);
-	String thingId = "";// TODO
+	PlatformDeleteDeviceReq req = new PlatformDeleteDeviceReq(msg);
+	String thingId;
 
 	try {
-	    //TODO unregisterServiceCallback
-	    UAALClient.delete(url+"spaces/"+space+"/service/callees/"+getSuffix(thingId), usr, pwd);
-	    UAALClient.delete(url + "spaces/" + space + "/context/publishers/" + getSuffix(thingId), usr, pwd);
-//	    responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
-	    responseMsg.getMetadata().setStatus("OK");
+	    for (String iotDevice : req.getDeviceIds()) {
+		thingId = iotDevice;// TODO Check which format. Need to get suffix?
+		//TODO unregisterServiceCallback
+		UAALClient.delete(url+"spaces/"+space+"/service/callees/"+getSuffix(thingId), usr, pwd);
+		UAALClient.delete(url + "spaces/" + space + "/context/publishers/" + getSuffix(thingId), usr, pwd);
+		//responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
+		responseMsg.getMetadata().setStatus("OK");
+	    }
 	} catch (Exception e) {
-	    log.error("Error sending request to uAAL at subscribe: " + e);
-	    e.printStackTrace();
+	    log.error("Error sending request to uAAL at subscribe", e);
 	    responseMsg.getMetadata().setStatus("KO");
 	    responseMsg.getMetadata().setMessageType(MessageTypesEnum.ERROR);
 	    responseMsg.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
@@ -404,8 +414,7 @@ public class UAALBridge extends AbstractBridge {
 	    UAALClient.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, JSON, body);
 	    // TODO What to do if response is asynchronous? What to return? Wait?
 	} catch (Exception e) {
-	    log.error("Error sending request to uAAL at subscribe: " + e);
-	    e.printStackTrace();
+	    log.error("Error sending request to uAAL at subscribe", e);
 	    responseMsg.getMetadata().setStatus("KO");
 	    responseMsg.getMetadata().setMessageType(MessageTypesEnum.ERROR);
 	    responseMsg.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
@@ -431,8 +440,7 @@ public class UAALBridge extends AbstractBridge {
 	    UAALClient.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, JSON, body);
 	    // TODO What to do if response is asynchronous? What to return? Wait?
 	} catch (Exception e) {
-	    log.error("Error sending request to uAAL at subscribe: " + e);
-	    e.printStackTrace();
+	    log.error("Error sending request to uAAL at subscribe", e);
 	    responseMsg.getMetadata().setStatus("KO");
 	    responseMsg.getMetadata().setMessageType(MessageTypesEnum.ERROR);
 	    responseMsg.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
@@ -459,8 +467,7 @@ public class UAALBridge extends AbstractBridge {
 //	    responseMessage.setPayload(responsePayload); //TODO Why does it need a payload in FIWARE????
 	    responseMsg.getMetadata().setStatus("OK"); //TODO Why is this not in FIWARE?
 	} catch (Exception e) {
-	    log.error("Error sending request to uAAL at subscribe: " + e);
-	    e.printStackTrace();
+	    log.error("Error sending request to uAAL at subscribe", e);
 	    responseMsg.getMetadata().setStatus("KO");
 	    responseMsg.getMetadata().setMessageType(MessageTypesEnum.ERROR);
 	    responseMsg.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
@@ -484,13 +491,20 @@ public class UAALBridge extends AbstractBridge {
     public Message error(Message msg) throws Exception {
 	// Sends information about any error that occurred inside bridge or
 	// inside InterMW.
-	return null;
+	log.info("Error occured in {}...", msg);
+	Message responseMessage = createResponseMessage(msg);
+	responseMessage.getMetadata().setStatus("KO");
+	responseMessage.getMetadata().setMessageType(MessageTypesEnum.ERROR);
+	return responseMessage;
     }
 
     @Override
     public Message unrecognized(Message msg) throws Exception {
 	// Custom message type which was not recognized by InterMW.
-	return null;
+	log.info("Unrecognized message type.");
+	Message responseMessage = createResponseMessage(msg);
+	responseMessage.getMetadata().setStatus("OK");
+	return responseMessage;
     }
 
     // ------------------------------------------
@@ -520,7 +534,7 @@ public class UAALBridge extends AbstractBridge {
 	    metadata.setConversationId(conversationId);
 	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.OBSERVATION);
 	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.RESPONSE);
-	    // metadata.setSenderPlatformId(new EntityID(platform.getId().getId())); //TODO
+	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
 	    messageForInterIoT.setMetadata(metadata);
 	    // Payload
 	    String event = req.body();
