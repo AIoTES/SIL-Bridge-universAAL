@@ -173,7 +173,7 @@ public class UAALBridge extends AbstractBridge {
     // ------------------------------------------
 
     @Override
-    public Message subscribe(Message msg)  {
+    public Message subscribe(Message msg) throws Exception  {
 	// Subscribes client to observations provided by the platform for the
 	// specified device.
 	/*

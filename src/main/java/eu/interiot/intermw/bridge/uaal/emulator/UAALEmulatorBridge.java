@@ -16,101 +16,103 @@ package eu.interiot.intermw.bridge.uaal.emulator;
 
 import eu.interiot.intermw.bridge.abstracts.AbstractBridge;
 import eu.interiot.intermw.bridge.exceptions.BridgeException;
-import eu.interiot.intermw.comm.broker.exceptions.BrokerException;
-import eu.interiot.intermw.commons.Context;
+//import eu.interiot.intermw.comm.broker.exceptions.BrokerException;
+//import eu.interiot.intermw.commons.Context;
 import eu.interiot.intermw.commons.exceptions.MiddlewareException;
-import eu.interiot.intermw.commons.exceptions.UnknownActionException;
-import eu.interiot.intermw.commons.exceptions.UnsupportedActionException;
+//import eu.interiot.intermw.commons.exceptions.UnknownActionException;
+//import eu.interiot.intermw.commons.exceptions.UnsupportedActionException;
 import eu.interiot.intermw.commons.interfaces.Configuration;
-import eu.interiot.intermw.commons.interfaces.MwFactory;
+//import eu.interiot.intermw.commons.interfaces.MwFactory;
 import eu.interiot.intermw.commons.model.Platform;
-import eu.interiot.intermw.commons.model.SubscriptionId;
-import eu.interiot.message.EntityID;
+//import eu.interiot.intermw.commons.model.SubscriptionId;
+//import eu.interiot.message.EntityID;
 import eu.interiot.message.Message;
-import eu.interiot.message.MessageMetadata;
-import eu.interiot.message.MessagePayload;
-import eu.interiot.message.URI.URIManagerMessageMetadata;
+//import eu.interiot.message.MessageMetadata;
+//import eu.interiot.message.MessagePayload;
+//import eu.interiot.message.URI.URIManagerMessageMetadata;
 import eu.interiot.message.exceptions.MessageException;
-import eu.interiot.message.exceptions.payload.PayloadException;
-import eu.interiot.message.metaTypes.PlatformMessageMetadata;
+//import eu.interiot.message.exceptions.payload.PayloadException;
+//import eu.interiot.message.metaTypes.PlatformMessageMetadata;
 import eu.interiot.message.utils.INTERMWDemoUtils;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
-import org.apache.jena.riot.Lang;
-import org.apache.jena.riot.RDFDataMgr;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+//import org.apache.http.client.methods.CloseableHttpResponse;
+//import org.apache.http.client.methods.HttpPost;
+//import org.apache.http.entity.StringEntity;
+//import org.apache.http.impl.client.CloseableHttpClient;
+//import org.apache.http.impl.client.HttpClientBuilder;
+//import org.apache.jena.rdf.model.Model;
+//import org.apache.jena.rdf.model.ModelFactory;
+//import org.apache.jena.riot.Lang;
+//import org.apache.jena.riot.RDFDataMgr;
+//import org.json.simple.JSONObject;
+//import org.json.simple.parser.JSONParser;
+//import org.slf4j.Logger;
+//import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.util.Set;
-import java.util.UUID;
+//import java.io.ByteArrayInputStream;
+//import java.io.InputStream;
+//import java.io.PrintWriter;
+//import java.io.StringWriter;
+//import java.util.Set;
+//import java.util.UUID;
 
-import static spark.Spark.post;
+//import static spark.Spark.post;
 
 @eu.interiot.intermw.bridge.annotations.Bridge(platformType = "UniversAALEmulated")
 public class UAALEmulatorBridge extends AbstractBridge {
-    private final String BASE_PATH = "http://intermw"; // TODO: retrieve this value from configuration
+    //    private final String BASE_PATH = "http://intermw"; // TODO: retrieve this value from configuration
 
-    private final Logger log = LoggerFactory.getLogger(UAALEmulatorBridge.class);
+    //    private final Logger log = LoggerFactory.getLogger(UAALEmulatorBridge.class);
 
-    private MwFactory mwFactory;
+    //    private MwFactory mwFactory;
     private int callbackPort;
 
     public UAALEmulatorBridge(Configuration configuration, Platform platform) throws MiddlewareException {
-        super(configuration, platform);
-        // FIXME make bridges multi-instance
-        // client = new
-        // OrionApiClient(configuration.getProperties(PROPERTIES_PREFIX));
-        mwFactory = Context.mwFactory();
-        callbackPort = Integer.parseInt(configuration.getProperty("bridge-callback-port"));
+	super(configuration, platform);
+	// FIXME make bridges multi-instance
+	// client = new
+	// OrionApiClient(configuration.getProperties(PROPERTIES_PREFIX));
+	//        mwFactory = Context.mwFactory();
+	callbackPort = Integer.parseInt(configuration.getProperty("bridge-callback-port"));
     }
 
-    private void create(String entityId) throws BridgeException {
-        callEmulatedPlafrorm(null, URIManagerMessageMetadata.MessageTypesEnum.THING_REGISTER, entityId, null, null);
+    public Message platformCreateDevices(Message msg) throws BridgeException {
+	//        callEmulatedPlafrorm(null, URIManagerMessageMetadata.MessageTypesEnum.THING_REGISTER, entityId, null, null);
+	return null;
     }
 
-	/*
-	private Thing read(Query query) throws BridgeException {
-		try {
-			EmulatorQuery _query = (EmulatorQuery) query;
-			log.info("Read with query: {}", ((EmulatorQuery) query).getOptionsInCommaSeparatedString());
+    public Message query(Message arg0) throws Exception {
+	try {
+	    //			EmulatorQuery _query = (EmulatorQuery) query;
+	    //			log.info("Read with query: {}", ((EmulatorQuery) query).getOptionsInCommaSeparatedString());
 
-			return null;
-		} catch (Exception e) {
-			throw new BridgeException(e);
-		}
-	}*/
+	    return null;
+	} catch (Exception e) {
+	    throw new BridgeException(e);
+	}
+    }
 
-    private void update(String thingId, Message message) throws BridgeException, MessageException {
-        // FIXME HACK: getAttributeFromPayload assumes that
-        // there is an observation inside the payload
-        // It will not work otherwise
-        String key = INTERMWDemoUtils.getAttrKeyToUpdateFromPayload(message.getPayload());
-        String value = INTERMWDemoUtils.getAttrValueToUpdateFromPayload(message.getPayload());
-        String type = INTERMWDemoUtils.getAttrTypeToUpdateFromPayload(message.getPayload());
+    public Message platformUpdateDevices(Message msg) throws BridgeException, MessageException {
+	// FIXME HACK: getAttributeFromPayload assumes that
+	// there is an observation inside the payload
+	// It will not work otherwise
+	String key = INTERMWDemoUtils.getAttrKeyToUpdateFromPayload(msg.getPayload());
+	String value = INTERMWDemoUtils.getAttrValueToUpdateFromPayload(msg.getPayload());
+	String type = INTERMWDemoUtils.getAttrTypeToUpdateFromPayload(msg.getPayload());
 
-        callEmulatedPlafrorm(null, URIManagerMessageMetadata.MessageTypesEnum.THING_UPDATE, thingId, value, null);
+	//        callEmulatedPlafrorm(null, URIManagerMessageMetadata.MessageTypesEnum.THING_UPDATE, thingId, value, null);
+	return null;
     }
 
     /**
      * @param thingId
      */
-    private void delete(String thingId) throws BridgeException {
-        callEmulatedPlafrorm(null, URIManagerMessageMetadata.MessageTypesEnum.THING_UNREGISTER, thingId, null, null);
+    public Message platformDeleteDevices(Message msg) throws BridgeException {
+	//        callEmulatedPlafrorm(null, URIManagerMessageMetadata.MessageTypesEnum.THING_UNREGISTER, thingId, null, null);
+	return null;
     }
 
-    private void subscribe(String thingId, String conversationId) throws BridgeException {
-
+    public Message subscribe(Message msg) throws BridgeException {
+	/*
         try {
             log.debug("Subscribe to thing " + thingId);
             UUID randomUniqueEndpoint = UUID.randomUUID();
@@ -158,11 +160,11 @@ public class UAALEmulatorBridge extends AbstractBridge {
         } catch (Exception e) {
             throw new BridgeException(e);
         }
-
-
+	 */
+	return null;
     }
 
-    private void callEmulatedPlafrorm(String conversationId, URIManagerMessageMetadata.MessageTypesEnum action, String thing, String value, String callBackUrl) throws BridgeException {
+    /*private void callEmulatedPlafrorm(String conversationId, URIManagerMessageMetadata.MessageTypesEnum action, String thing, String value, String callBackUrl) throws BridgeException {
         try {
             log.info("Perform action {} for {}={}, conversation {}", action.toString(), thing, value, conversationId);
 
@@ -211,14 +213,57 @@ public class UAALEmulatorBridge extends AbstractBridge {
             throw new BridgeException(e);
         }
 
+    }*/
+
+    public Message unsubscribe(Message msg) throws BridgeException {
+	//        log.info("Unsubscribe {} ", subscriptionId.getId());
+	//        callEmulatedPlafrorm(subscriptionId.getId(), URIManagerMessageMetadata.MessageTypesEnum.UNSUBSCRIBE, null, null, null);
+	return null;
     }
 
-    private void unsubscribe(SubscriptionId subscriptionId) throws BridgeException {
-        log.info("Unsubscribe {} ", subscriptionId.getId());
-        callEmulatedPlafrorm(subscriptionId.getId(), URIManagerMessageMetadata.MessageTypesEnum.UNSUBSCRIBE, null, null, null);
+    @Override
+    public Message actuate(Message arg0) throws Exception {
+	// TODO Auto-generated method stub
+	return null;
     }
 
+    @Override
+    public Message error(Message arg0) throws Exception {
+	// TODO Auto-generated method stub
+	return null;
+    }
 
+    @Override
+    public Message listDevices(Message arg0) throws Exception {
+	// TODO Auto-generated method stub
+	return null;
+    }
+
+    @Override
+    public Message observe(Message arg0) throws Exception {
+	// TODO Auto-generated method stub
+	return null;
+    }
+
+    @Override
+    public Message registerPlatform(Message arg0) throws Exception {
+	// TODO Auto-generated method stub
+	return null;
+    }
+
+    @Override
+    public Message unrecognized(Message arg0) throws Exception {
+	// TODO Auto-generated method stub
+	return null;
+    }
+
+    @Override
+    public Message unregisterPlatform(Message arg0) throws Exception {
+	// TODO Auto-generated method stub
+	return null;
+    }
+
+    /*
     @SuppressWarnings("StatementWithEmptyBody")
     @Override
     public void send(Message message) throws BridgeException {
@@ -273,10 +318,10 @@ public class UAALEmulatorBridge extends AbstractBridge {
                     throw new PayloadException("No entities of type Device found in the Payload");
 
                 throw new BridgeException("QUERY not implemented");
-				/*String entity = entities.iterator().next();
-
-				Query q = new DefaultQueryImpl(new ThingId(entity));
-				read(q);*/
+//				String entity = entities.iterator().next();
+//
+//				Query q = new DefaultQueryImpl(new ThingId(entity));
+//				read(q);
 
             } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.SUBSCRIBE)) {
                 // Assuming the subscribing to one thing
@@ -324,5 +369,5 @@ public class UAALEmulatorBridge extends AbstractBridge {
         }
 
 
-    }
+    }*/
 }
