@@ -33,7 +33,7 @@ import eu.interiot.message.Message;
 import eu.interiot.message.exceptions.MessageException;
 //import eu.interiot.message.exceptions.payload.PayloadException;
 //import eu.interiot.message.metaTypes.PlatformMessageMetadata;
-import eu.interiot.message.utils.INTERMWDemoUtils;
+//import eu.interiot.message.utils.INTERMWDemoUtils;
 //import org.apache.http.client.methods.CloseableHttpResponse;
 //import org.apache.http.client.methods.HttpPost;
 //import org.apache.http.entity.StringEntity;
@@ -95,9 +95,9 @@ public class UAALEmulatorBridge extends AbstractBridge {
 	// FIXME HACK: getAttributeFromPayload assumes that
 	// there is an observation inside the payload
 	// It will not work otherwise
-	String key = INTERMWDemoUtils.getAttrKeyToUpdateFromPayload(msg.getPayload());
-	String value = INTERMWDemoUtils.getAttrValueToUpdateFromPayload(msg.getPayload());
-	String type = INTERMWDemoUtils.getAttrTypeToUpdateFromPayload(msg.getPayload());
+//	String key = INTERMWDemoUtils.getAttrKeyToUpdateFromPayload(msg.getPayload());
+//	String value = INTERMWDemoUtils.getAttrValueToUpdateFromPayload(msg.getPayload());
+//	String type = INTERMWDemoUtils.getAttrTypeToUpdateFromPayload(msg.getPayload());
 
 	//        callEmulatedPlafrorm(null, URIManagerMessageMetadata.MessageTypesEnum.THING_UPDATE, thingId, value, null);
 	return null;
