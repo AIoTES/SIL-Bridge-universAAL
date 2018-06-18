@@ -6,7 +6,7 @@ public class Body {
 	    "DESCRIBE ?d WHERE { ?d a <http://ontology.universaal.org/PhThing.owl#Device>}";
     public static final String ID="$%i";
     public static final String CALLBACK="$%c";
-    public static final String SUBSCRIBED="$%s";
+    public static final String URI="$%s";
     public static final String TYPE="$%t";
     public static final String TYPE_OBJ="$%o";
     public static final String QUERY="$%q";
@@ -46,7 +46,7 @@ public class Body {
 	    + " <http://ontology.universaal.org/PhThing.owl#PhysicalThing> .\"\r\n"
 	    + "  } \r\n"
 	    + " }";   
-    public static final String CREATE_CALLEE_1="{\r\n"
+    public static final String CREATE_CALLEE_GET="{\r\n"
 	    + "  \"callee\": {\r\n"
 	    + "    \"@id\": \""+ID+"\",\r\n"
 	    + "     \"callback\": \""+CALLBACK+"\",\r\n"
@@ -104,7 +104,7 @@ public class Body {
 	    + "<"+TYPE+"> a owl:Class .\"\r\n"
 	    + "  }\r\n"
 	    + " }";
-    public static final String CREATE_CALLEE_2="{\r\n"
+    public static final String CREATE_CALLEE_GETVALUE="{\r\n"
 	    + "  \"callee\": {\r\n"
 	    + "    \"@id\": \""+ID+"\",\r\n"
 	    + "     \"callback\": \""+CALLBACK+"\",\r\n"
@@ -176,10 +176,10 @@ public class Body {
 	    + "_:BN000000 a <http://ontology.universAAL.org/Context.owl#ContextEventPattern> ;\\r\\n"
 	    + "  <http://www.w3.org/2000/01/rdf-schema#subClassOf> [\\r\\n"
 	    + "      a :Restriction ;\\r\\n"
-	    + "      :hasValue <"+SUBSCRIBED+"> ;\\r\\n"
+	    + "      :hasValue <"+URI+"> ;\\r\\n"
 	    + "      :onProperty rdf:subject\\r\\n"
 	    + "    ] .\\r\\n"
-	    + "<"+SUBSCRIBED+"> a <http://ontology.universaal.org/PhThing.owl#Device>,"
+	    + "<"+URI+"> a <http://ontology.universaal.org/PhThing.owl#Device>,"
 	    + " <http://ontology.universaal.org/PhThing.owl#PhysicalThing> .\"\r\n"
 	    + "  }\r\n"
 	    + " }";    
@@ -225,4 +225,47 @@ public class Body {
 	    + "  ] ;"
 	    + "  pvn:numberOfValueRestrictions \"1\"^^xsd:int .";
     public static final String CALL_GETALLDEVICES=CALL_QUERY.replace(QUERY, QUERYDEVICES);
+    public static final String CALL_GETDEVICE="@prefix ns: <http://www.daml.org/services/owl-s/1.1/Profile.owl#> ."
+	    + "prefix ns1: <http://ontology.universaal.org/PhThing.owl#> ."
+	    + "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+	    + "@prefix pvn: <http://ontology.universAAL.org/uAAL.owl#> ."
+	    + "@prefix ns2: <http://www.daml.org/services/owl-s/1.1/Process.owl#> ."
+	    + "@prefix ns3: <http://www.daml.org/services/owl-s/1.1/Service.owl#> ."
+	    + "@prefix : <http://ontology.universAAL.org/Workbench.owl#> ."
+	    + "_:BN000000 a pvn:ServiceRequest ;"
+	    + "  pvn:requiredResult ["
+	    + "    ns2:withOutput ("
+	    + "      ["
+	    + "        a ns2:OutputBinding ;"
+	    + "        ns2:toParam :output1 ;"
+	    + "        ns2:valueForm \"\"\""
+	    + "          @prefix : <http://ontology.universAAL.org/Service.owl#> ."
+	    + "          _:BN000000 a :PropertyPath ;"
+	    + "            :thePath ("
+	    + "              <http://ontology.universaal.org/PhThing.owl#controls>"
+	    + "            ) ."
+	    + "          \"\"\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral>"
+		    + "      ]"
+	    + "    ) ;"
+	    + "    a ns2:Result"
+	    + "  ] ;"
+	    + "  pvn:requestedService :serviceX ."
+	    + "<"+URI+"> a <"+TYPE+"> ,"
+	    + "    ns1:Device ,"
+	    + "    ns1:PhysicalThing ."
+	    + ":output1 a ns2:Output ."
+	    + ":serviceX a ns1:DeviceService ;"
+	    + "  pvn:instanceLevelRestrictions ("
+	    + "    ["
+	    + "      owl:hasValue <"+URI+"> ;"
+	    + "      a owl:Restriction ;"
+	    + "      owl:onProperty ns1:controls"
+	    + "    ]"
+  	    + ") ;"
+	    + "  ns3:presents ["
+	    + "    ns3:presentedBy :serviceX ;"
+	    + "    a ns:Profile ;"
+	    + "    ns:has_process :serviceXProcess"
+	    + "  ] ;"
+	    + "  pvn:numberOfValueRestrictions \"1\"^^<http://www.w3.org/2001/XMLSchema#int> .";
 }
