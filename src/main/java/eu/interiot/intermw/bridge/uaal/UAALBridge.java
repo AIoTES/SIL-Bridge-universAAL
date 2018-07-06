@@ -330,8 +330,8 @@ public class UAALBridge extends AbstractBridge {
 	    registerCallback_ServiceGET(getSuffixCalleeGET(deviceURI));
 	    registerCallback_ServiceGETVALUE(getSuffixCalleeGETVALUE(deviceURI));
 	    UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffixCalleeGET(deviceURI), usr, pwd, JSON, bodyS1);
-	    UAALClient.post(url + "spaces/" + space + "/service/callees/"+getSuffixCalleeGETVALUE(deviceURI), usr, pwd, JSON, bodyS2);
-	    UAALClient.post(url + "spaces/" + space + "/context/publishers/"+getSuffix(deviceURI), usr, pwd, JSON, bodyC);
+	    UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffixCalleeGETVALUE(deviceURI), usr, pwd, JSON, bodyS2);
+	    UAALClient.put(url + "spaces/" + space + "/context/publishers/"+getSuffix(deviceURI), usr, pwd, JSON, bodyC);
 	}
 
 	log.info("Completed platformUpdateDevice");
