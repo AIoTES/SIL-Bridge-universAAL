@@ -24,13 +24,16 @@ package eu.interiot.intermw.bridge.uaal;
 import static spark.Spark.post;
 
 import java.io.ByteArrayInputStream;
-import java.util.ArrayList;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
 
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.RDF;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,11 +46,6 @@ import eu.interiot.intermw.comm.broker.exceptions.BrokerException;
 import eu.interiot.intermw.commons.exceptions.MiddlewareException;
 import eu.interiot.intermw.commons.interfaces.Configuration;
 import eu.interiot.intermw.commons.model.Platform;
-//import eu.interiot.intermw.commons.requests.PlatformCreateDeviceReq;//TODO Do not use
-//import eu.interiot.intermw.commons.requests.PlatformDeleteDeviceReq;//TODO Do not use
-//import eu.interiot.intermw.commons.requests.PlatformUpdateDeviceReq;//TODO Do not use
-//import eu.interiot.intermw.commons.requests.SubscribeReq;//TODO Do not use
-//import eu.interiot.intermw.commons.requests.UnsubscribeReq;//TODO Do not use
 import eu.interiot.message.Message;
 import eu.interiot.message.MessageMetadata;
 import eu.interiot.message.MessagePayload;
@@ -63,33 +61,35 @@ public class UAALBridge extends AbstractBridge {
     private final static String DEFAULT_CALLER = "default";
     private final static String JSON = "application/json";
     private final static String TEXT = "text/plain";
+    private final static String PATH_CONTEXT = "/uaal/context/";
+    private final static String PATH_DEVICE = "/uaal/device/";
+    private final static String PATH_VALUE = "/uaal/value/";
     private final Logger log = LoggerFactory.getLogger(UAALBridge.class);
     private String url;
     private String usr;
     private String pwd;
     private String space;
-    private String bridgeCallbackContext;
-    private String bridgeCallbackServiceDevice;
-    private String bridgeCallbackServiceValue;
+    private String bridgeCallback_CONTEXT;
+    private String bridgeCallback_DEVICE;
+    private String bridgeCallback_VALUE;
     // These are to keep track of which callbacks Spark must listen, and which must 404
-    private ArrayList<String> callbacksContext =new ArrayList<String>();
-    private ArrayList<String> callbacksServiceGET =new ArrayList<String>();
-    private ArrayList<String> callbacksServiceGETVALUE =new ArrayList<String>();
+    private HashSet<String> validCallback_CONTEXT =new HashSet<String>();
+    private HashSet<String> validCallback_DEVICE =new HashSet<String>();
+    private HashSet<String> validCallback_VALUE =new HashSet<String>();
 
     public UAALBridge(Configuration config, Platform platform)
 	    throws MiddlewareException {
 	super(config, platform);
 	log.debug("UniversAAL bridge is initializing...");
-
 	Properties properties = configuration.getProperties();
 	try {
 	    url = properties.getProperty(PROPERTIES_PREFIX + "url");
 	    usr = properties.getProperty(PROPERTIES_PREFIX + "user");
 	    pwd = properties.getProperty(PROPERTIES_PREFIX + "password");
 	    space = properties.getProperty(PROPERTIES_PREFIX + "space");
-	    bridgeCallbackContext = bridgeCallbackUrl.toString()+"/context/"; //TODO Check all these URLs
-	    bridgeCallbackServiceDevice = bridgeCallbackUrl.toString()+"/servicedevice/";
-	    bridgeCallbackServiceValue = bridgeCallbackUrl.toString()+"/servicevalue/";
+	    bridgeCallback_CONTEXT = bridgeCallbackUrl.toString()+PATH_CONTEXT;
+	    bridgeCallback_DEVICE = bridgeCallbackUrl.toString()+PATH_DEVICE;
+	    bridgeCallback_VALUE = bridgeCallbackUrl.toString()+PATH_VALUE;
 	} catch (Exception e) {
 	    throw new MiddlewareException(
 		    "Failed to read UAALBridge configuration: "
@@ -125,6 +125,8 @@ public class UAALBridge extends AbstractBridge {
 
 	log.info("Entering registerPlatform");
 	
+	log.debug("Entering registerPlatform\n"+msg.serializeToJSONLD());
+	
 	String bodySpace = Body.CREATE_SPACE
 		.replace(Body.ID, space)
 		.replace(Body.CALLBACK, bridgeCallbackUrl.toString());
@@ -133,6 +135,11 @@ public class UAALBridge extends AbstractBridge {
 
 	UAALClient.post(url + "spaces/", usr, pwd, JSON, bodySpace);
 	UAALClient.post(url + "spaces/" + space + "/service/callers/", usr, pwd, JSON, bodyCaller);
+	
+	// Register the Spark callback servlets, only once per platform.
+	registerCallback_CONTEXT();
+	registerCallback_DEVICE();
+	registerCallback_VALUE();
 
 	log.info("Completed registerPlatform");
 
@@ -154,7 +161,7 @@ public class UAALBridge extends AbstractBridge {
 	// will have to re-create and re-subscribe all the things it had before.
 
 	log.info("Entering unregisterPlatform");
-
+	log.debug("Entering unregisterPlatform\n"+msg.serializeToJSONLD());
 	UAALClient.delete(url + "spaces/" + space, usr, pwd);
 
 	log.info("Completed unregisterPlatform");
@@ -188,20 +195,22 @@ public class UAALBridge extends AbstractBridge {
 	// The Subscriber: Receive anything about this device
 
 	log.info("Entering subscribe");
+	log.debug("Entering subscribe\n"+msg.serializeToJSONLD());
 
-//	SubscribeReq req = new SubscribeReq(msg);
 	String deviceURI, body;
 	String conversationId = msg.getMetadata().getConversationId().orElse(null);
 	boolean init=msg.getMetadata().getMessageTypes().contains(MessageTypesEnum.SYS_INIT);
 	
-	registerCallback_Context(conversationId);
+//	registerCallback_Context(conversationId);
+	validCallback_CONTEXT.add(conversationId);
+	
 	for (Resource device : getDevices(msg.getPayload())) {
 	    deviceURI=device.getURI();
 	    if(!init){
 		body = Body.CREATE_SUBSCRIBER
 			.replace(Body.ID, getSuffix(deviceURI))
 			.replace(Body.URI, deviceURI)
-			.replace(Body.CALLBACK, bridgeCallbackContext+conversationId);
+			.replace(Body.CALLBACK, bridgeCallback_CONTEXT+conversationId);
 		UAALClient.post(url + "spaces/" + space + "/context/subscribers/", usr, pwd, JSON, body);
 	    }// Else do not re-create subscriber (only to save network, it's OK anyway)
 	}
@@ -218,11 +227,12 @@ public class UAALBridge extends AbstractBridge {
 	// Remove the CSubscriber created in subscribe
 
 	log.info("Entering unsubscribe");
+	log.debug("Entering unsubscribe\n"+msg.serializeToJSONLD());
 
-//	UnsubscribeReq req = new UnsubscribeReq(msg);
 	String conversationId = msg.getMetadata().getConversationId().orElse(null);
 
-	unregisterCallback_Context(conversationId);
+//	unregisterCallback_Context(conversationId);
+	validCallback_CONTEXT.remove(conversationId);
 	
 	for (Resource device : getDevices(msg.getPayload())) { 
 	    UAALClient.delete(url + "spaces/" + space + "/context/subscribers/" + getSuffix(device.getURI()), usr, pwd);
@@ -267,27 +277,32 @@ public class UAALBridge extends AbstractBridge {
 	// Should I cover anything else?
 
 	log.info("Entering platformCreateDevice");
-	
-//	PlatformCreateDeviceReq req = new PlatformCreateDeviceReq(msg);
+	log.debug("Entering platformCreateDevice\n"+msg.serializeToJSONLD());
+
 	String deviceURI, deviceType, deviceValueType, bodyS1, bodyS2, bodyC;
 
 	for (Resource device : getDevices(msg.getPayload())) { 
 	    deviceURI = device.getURI();
 	    deviceType = getSpecializedType(device);
-	    deviceValueType = getValueType(device);
+	    deviceValueType = getValueType(deviceType);
 	    bodyS1 = Body.CREATE_CALLEE_GET
 		    .replace(Body.ID, getSuffixCalleeGET(deviceURI))
-		    .replace(Body.CALLBACK, bridgeCallbackServiceDevice+getSuffix(deviceURI))
-		    .replace(Body.TYPE, deviceType);
+		    .replace(Body.CALLBACK, bridgeCallback_DEVICE+getSuffix(deviceURI))
+		    .replace(Body.TYPE, deviceType)
+		    .replace(Body.URI, deviceURI);
 	    bodyS2 = Body.CREATE_CALLEE_GETVALUE
 		    .replace(Body.ID, getSuffixCalleeGETVALUE(deviceURI))
-		    .replace(Body.CALLBACK, bridgeCallbackServiceValue+getSuffix(deviceURI))
+		    .replace(Body.CALLBACK, bridgeCallback_VALUE+getSuffix(deviceURI))
 		    .replace(Body.TYPE, deviceType)
-		    .replace(Body.TYPE_OBJ, deviceValueType);
+		    .replace(Body.TYPE_OBJ, deviceValueType)
+		    .replace(Body.URI, deviceURI);
 	    bodyC = Body.CREATE_PUBLISHER
-		    .replace(Body.ID, getSuffix(deviceURI));
-	    registerCallback_ServiceGET(getSuffixCalleeGET(deviceURI));
-	    registerCallback_ServiceGETVALUE(getSuffixCalleeGETVALUE(deviceURI));
+		    .replace(Body.ID, getSuffix(deviceURI))
+		    .replace(Body.URI, deviceURI);
+//	    registerCallback_ServiceGET(getSuffixCalleeGET(deviceURI));
+	    validCallback_DEVICE.add(getSuffixCalleeGET(deviceURI));
+//	    registerCallback_ServiceGETVALUE(getSuffixCalleeGETVALUE(deviceURI));
+	    validCallback_VALUE.add(getSuffixCalleeGETVALUE(deviceURI));
 	    UAALClient.post(url + "spaces/" + space + "/service/callees/", usr, pwd, JSON, bodyS1);
 	    UAALClient.post(url + "spaces/" + space + "/service/callees/", usr, pwd, JSON, bodyS2);
 	    UAALClient.post(url + "spaces/" + space + "/context/publishers/", usr, pwd, JSON, bodyC);
@@ -308,27 +323,32 @@ public class UAALBridge extends AbstractBridge {
 	// TODO publish the change as event?
 
 	log.info("Entering platformUpdateDevice");
-	
-//	PlatformUpdateDeviceReq req = new PlatformUpdateDeviceReq(msg);
+	log.debug("Entering platformUpdateDevice\n"+msg.serializeToJSONLD());
+
 	String deviceURI, deviceType, deviceValueType, bodyS1, bodyS2, bodyC;
 
 	for (Resource device : getDevices(msg.getPayload())) { 
 	    deviceURI = device.getURI();
 	    deviceType = getSpecializedType(device);
-	    deviceValueType = getValueType(device);
+	    deviceValueType = getValueType(deviceType);
 	    bodyS1=Body.CREATE_CALLEE_GET
 		    .replace(Body.ID, getSuffixCalleeGET(deviceURI))
-		    .replace(Body.CALLBACK, bridgeCallbackServiceDevice+getSuffix(deviceURI))
-		    .replace(Body.TYPE, deviceType);
+		    .replace(Body.CALLBACK, bridgeCallback_DEVICE+getSuffix(deviceURI))
+		    .replace(Body.TYPE, deviceType)
+		    .replace(Body.URI, deviceURI);
 	    bodyS2 = Body.CREATE_CALLEE_GETVALUE
 		    .replace(Body.ID, getSuffixCalleeGETVALUE(deviceURI))
-		    .replace(Body.CALLBACK, bridgeCallbackServiceValue+getSuffix(deviceURI))
+		    .replace(Body.CALLBACK, bridgeCallback_VALUE+getSuffix(deviceURI))
 		    .replace(Body.TYPE, deviceType)
-		    .replace(Body.TYPE_OBJ, deviceValueType);
+		    .replace(Body.TYPE_OBJ, deviceValueType)
+		    .replace(Body.URI, deviceURI);
 	    bodyC = Body.CREATE_PUBLISHER
-		    .replace(Body.ID, getSuffix(deviceURI));
-	    registerCallback_ServiceGET(getSuffixCalleeGET(deviceURI));
-	    registerCallback_ServiceGETVALUE(getSuffixCalleeGETVALUE(deviceURI));
+		    .replace(Body.ID, getSuffix(deviceURI))
+		    .replace(Body.URI, deviceURI);
+//	    registerCallback_ServiceGET(getSuffixCalleeGET(deviceURI));
+	    validCallback_DEVICE.add(getSuffixCalleeGET(deviceURI));
+//	    registerCallback_ServiceGETVALUE(getSuffixCalleeGETVALUE(deviceURI));
+	    validCallback_VALUE.add(getSuffixCalleeGETVALUE(deviceURI));
 	    UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffixCalleeGET(deviceURI), usr, pwd, JSON, bodyS1);
 	    UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffixCalleeGETVALUE(deviceURI), usr, pwd, JSON, bodyS2);
 	    UAALClient.put(url + "spaces/" + space + "/context/publishers/"+getSuffix(deviceURI), usr, pwd, JSON, bodyC);
@@ -348,13 +368,14 @@ public class UAALBridge extends AbstractBridge {
 	// String thingType)
 
 	log.info("Entering platformDeleteDevice");
-
-//	PlatformDeleteDeviceReq req = new PlatformDeleteDeviceReq(msg);
+	log.debug("Entering platformDeleteDevice\n"+msg.serializeToJSONLD());
 
 	for (Resource device : getDevices(msg.getPayload())) { 
 	    String deviceURI=device.getURI();
-	    unregisterCallback_ServiceGET(getSuffixCalleeGET(deviceURI));
-	    unregisterCallback_ServiceGETVALUE(getSuffixCalleeGETVALUE(deviceURI));
+//	    unregisterCallback_ServiceGET(getSuffixCalleeGET(deviceURI));
+	    validCallback_DEVICE.remove(getSuffixCalleeGET(deviceURI));
+//	    unregisterCallback_ServiceGETVALUE(getSuffixCalleeGETVALUE(deviceURI));
+	    validCallback_VALUE.remove(getSuffixCalleeGETVALUE(deviceURI));
 	    UAALClient.delete(url+"spaces/"+space+"/service/callees/"+getSuffixCalleeGET(deviceURI), usr, pwd);
 	    UAALClient.delete(url+"spaces/"+space+"/service/callees/"+getSuffixCalleeGETVALUE(deviceURI), usr, pwd);
 	    UAALClient.delete(url + "spaces/" + space + "/context/publishers/" + getSuffix(deviceURI), usr, pwd);
@@ -378,7 +399,7 @@ public class UAALBridge extends AbstractBridge {
 	// Return a parsed Thing from the returned Device instance
 
 	log.info("Entering query");
-
+	log.debug("Entering query\n"+msg.serializeToJSONLD());
 	Message responseMsg = createResponseMessage(msg);
 	String deviceURI="";
 	String deviceType="";
@@ -411,8 +432,8 @@ public class UAALBridge extends AbstractBridge {
 
 	// TODO Do they have to be only the Ids? Or the full reconstructed Device, including value? 
 
-	log.info("Entering query");
-
+	log.info("Entering listDevices");
+	log.debug("Entering listDevices\n"+msg.serializeToJSONLD());
 	Message responseMsg = createResponseMessage(msg);
 	String body = Body.CALL_GETALLDEVICES;
 
@@ -434,7 +455,7 @@ public class UAALBridge extends AbstractBridge {
 	responseMsg.setPayload(new IoTDevicePayload(jena));
 	responseMsg.getMetadata().setStatus("OK");
 	
-	log.info("Completed query");
+	log.info("Completed listDevices");
 
 	return responseMsg;
     }
@@ -445,7 +466,7 @@ public class UAALBridge extends AbstractBridge {
 	// acting as a publisher for platform)
 
 	log.info("Entering observe");
-
+	log.debug("Entering observe\n"+msg.serializeToJSONLD());
 	Message responseMsg = createResponseMessage(msg);
 	String deviceURI = "";// TODO There are going to be multiple observations. Maybe
 	String body = "";// TODO How to convert? Can I expect to receive a uAAL ContextEvent thanks to IPSM?
@@ -500,20 +521,21 @@ public class UAALBridge extends AbstractBridge {
 	return getSuffix(interiotID)+"value";
     }
     
-    private void registerCallback_Context(String conversationId) throws BrokerException {
+    private void registerCallback_CONTEXT(/*String conversationId*/) throws BrokerException {
 	// When an event is notified, uAAL REST will send it to
-	// bridgeCallbackContext/ConversationId. Create there a RESTlet, and
+	// bridgeCallback_CONTEXT/ConversationId. Create there a RESTlet, and
 	// whenever an event arrives, build a Message with an equivalent payload
 	// and push it to InterIoT.
 	
-	// Spark cannot unregister paths, so once bridgeCallbackContext + conversationId
-	// is there, it remains forever. An alternative is using bridgeCallbackContext + ":/id"
+	// Spark cannot unregister paths, so once bridgeCallback_CONTEXT + conversationId
+	// is there, it remains forever. An alternative is using bridgeCallback_CONTEXT + ":/id"
 	// and then getting the conversationId with req.params(":conversationId")
-
-	if(!callbacksContext.contains(conversationId))callbacksContext.add(conversationId);
-	post(bridgeCallbackContext + "/:conversationId", (req, res) -> {
+//	if(!validCallback_CONTEXT.contains(conversationId)){
+//	    validCallback_CONTEXT.add(conversationId);
+//	}
+	post(PATH_CONTEXT + ":conversationId", (req, res) -> {
 	    log.debug("CONTEXT CALLBACK -> Got event from uaal");
-	    if(!callbacksContext.contains(req.params(":conversationId"))){
+	    if(!validCallback_CONTEXT.contains(req.params(":conversationId"))){
 		res.status(404);
 		return "";
 	    }
@@ -540,20 +562,20 @@ public class UAALBridge extends AbstractBridge {
 	});
     }
     
-    private void unregisterCallback_Context(String conversationId) {
-	callbacksContext.remove(conversationId);
-    }
+//    private void unregisterCallback_Context(String conversationId) {
+//	validCallback_CONTEXT.remove(conversationId);
+//    }
     
-    private void registerCallback_ServiceGET(String deviceId_device) throws BrokerException {
+    private void registerCallback_DEVICE(/*String deviceId_device*/) throws BrokerException {
 	// This is for GET DEVICE.
 	// When a call is requested from uaal, uAAL REST will send it to this
 	// RESTlet. Build a Message with a Query? and push it to InterIoT (?).
 	// Post the response back to uAAL
 
-	if(!callbacksServiceGET.contains(deviceId_device))callbacksServiceGET.add(deviceId_device);
-	post(bridgeCallbackServiceDevice + "/:deviceId", (req, res) -> {
+//	if(!validCallback_DEVICE.contains(deviceId_device))validCallback_DEVICE.add(deviceId_device);
+	post(PATH_DEVICE + ":deviceId", (req, res) -> {
 	    log.debug("SERVICE CALLBACK -> Got request from uaal");
-	    if(!callbacksServiceGET.contains(req.params(":deviceId"))){
+	    if(!validCallback_DEVICE.contains(req.params(":deviceId"))){
 		res.status(404);
 		return "";
 	    }
@@ -583,20 +605,20 @@ public class UAALBridge extends AbstractBridge {
 	});
     }
     
-    private void unregisterCallback_ServiceGET(String deviceId_device) {
-	callbacksServiceGET.remove(deviceId_device);
-    }
+//    private void unregisterCallback_ServiceGET(String deviceId_device) {
+//	validCallback_DEVICE.remove(deviceId_device);
+//    }
     
-    private void registerCallback_ServiceGETVALUE(String deviceId_value) throws BrokerException {
+    private void registerCallback_VALUE(/*String deviceId_value*/) throws BrokerException {
 	// This is for GET DEVICE VALUE
 	// When a call is requested from uaal, uAAL REST will send it to this
 	// RESTlet. Build a Message with a Query? and push it to InterIoT (?).
 	// Post the response back to uAAL
 
-	if(!callbacksServiceGETVALUE.contains(deviceId_value))callbacksServiceGETVALUE.add(deviceId_value);
-	post(bridgeCallbackServiceValue + "/:deviceId", (req, res) -> {
+//	if(!validCallback_VALUE.contains(deviceId_value))validCallback_VALUE.add(deviceId_value);
+	post(PATH_VALUE + ":deviceId", (req, res) -> {
 	    log.debug("SERVICE CALLBACK -> Got request from uaal");
-	    if(!callbacksServiceGETVALUE.contains(req.params(":deviceId"))){
+	    if(!validCallback_VALUE.contains(req.params(":deviceId"))){
 		res.status(404);
 		return "";
 	    }
@@ -626,9 +648,9 @@ public class UAALBridge extends AbstractBridge {
 	});
     }
     
-    private void unregisterCallback_ServiceGETVALUE(String deviceId_value) {
-	callbacksServiceGETVALUE.remove(deviceId_value);
-    }
+//    private void unregisterCallback_ServiceGETVALUE(String deviceId_value) {
+//	validCallback_VALUE.remove(deviceId_value);
+//    }
     
     private Message ok(Message inMsg){
 	Message responseMsg = createResponseMessage(inMsg);
@@ -637,18 +659,47 @@ public class UAALBridge extends AbstractBridge {
     }
     
     private List<Resource> getDevices(MessagePayload payload) {
-	// TODO Auto-generated method stub: Extract uAAL devices
-	return null;
+	Model model = payload.getJenaModel();
+	return model.listResourcesWithProperty(RDF.type,
+		model.getResource("http://inter-iot.eu/GOIoTP#IoTDevice"))
+		.toList();
     }
     
-    private String getValueType(Resource device) {
-	// TODO Auto-generated method stub: Extract type of hasValue property
+    private String getValueType(String deviceType) {
+	// TODO Auto-generated method stub: Get type of hasValue property for a given device type
+	if (deviceType.equals("http://ontology.universAAL.org/Device.owl#TemperatureSensor"))
+	    return "http://www.w3.org/2001/XMLSchema#float";
+	
 	return "http://www.w3.org/2001/XMLSchema#float";
     }
 
     private String getSpecializedType(Resource device) {
 	// TODO Auto-generated method stub: Extract device most specialized RDF Type
+	String type = device
+		.getProperty(device.getModel()
+			.getProperty("http://inter-iot.eu/device-type"))
+		.getObject().asLiteral().getString();
+	if (type.equals("LIGHT"))//TODO Check possible values of interiot types
+	    return "http://ontology.universAAL.org/Device.owl#LightController";
+
 	return "http://ontology.universAAL.org/Device.owl#TemperatureSensor";
+    }
+    
+    private String encodePlatformId(String platformId){
+	// From https://stackoverflow.com/questions/607176/ ... 
+	// ... java-equivalent-to-javascripts-encodeuricomponent-that-produces-identical-outpu
+	try {
+	    return URLEncoder.encode(platformId, "UTF-8")
+	    .replaceAll("\\+", "%20")
+	    .replaceAll("\\%21", "!")
+	    .replaceAll("\\%27", "'")
+	    .replaceAll("\\%28", "(")
+	    .replaceAll("\\%29", ")")
+	    .replaceAll("\\%7E", "~");
+	} catch (UnsupportedEncodingException e) {
+	    log.error("This should have never happened!", e);
+	    return platformId;
+	}
     }
 
 }
