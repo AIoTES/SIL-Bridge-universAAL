@@ -68,6 +68,10 @@ public class UAALBridge extends AbstractBridge {
     private final static String PATH_CONTEXT = "/uaal/context/";
     private final static String PATH_DEVICE = "/uaal/device/";
     private final static String PATH_VALUE = "/uaal/value/";
+    private static final String URI_RETURNS = "http://ontology.universAAL.org/uAAL.owl#returns";
+    private static final String URI_MULTI = "http://ontology.universAAL.org/uAAL.owl#MultiServiceResponse";
+    private static final String URI_PARAM = "http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue";
+    private static final String URI_OUTPUT = "http://ontology.universAAL.org/InterIoT.owl#output1";
     private final Logger log = LoggerFactory.getLogger(UAALBridge.class);
     private String url;
     private String usr;
@@ -82,8 +86,7 @@ public class UAALBridge extends AbstractBridge {
     private HashSet<String> validCallback_DEVICE =new HashSet<String>();
     private HashSet<String> validCallback_VALUE =new HashSet<String>();
 
-    public UAALBridge(Configuration config, Platform platform)
-	    throws MiddlewareException {
+    public UAALBridge(Configuration config, Platform platform) throws MiddlewareException {
 	super(config, platform);
 	log.debug("UniversAAL bridge is initializing...");
 	Properties properties = configuration.getProperties();
@@ -382,8 +385,8 @@ public class UAALBridge extends AbstractBridge {
 	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
 	// The output is itself a serialized device TODO prevent multivalues
 	String output=jena.getRequiredProperty(
-		jena.getResource("http://ontology.universAAL.org/InterIoT.owl#output1"), 
-		jena.getProperty("http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue"))
+		jena.getResource(URI_OUTPUT), 
+		jena.getProperty(URI_PARAM))
 		.getObject().asLiteral().getString();
 	result.read(new ByteArrayInputStream(output.getBytes()), null, "TURTLE");
 	responseMsg.setPayload(new IoTDevicePayload(result));
@@ -396,71 +399,49 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message listDevices(Message msg) throws Exception {
-	/* 
-	 * Return the full reconstructed Device, including value.
-	 * There are 2 options here: 1) Ask the CHE about Device resources.
-	 * 2) Send a Request to all with an output of type Device. 
+	/*
+	 * Return the full reconstructed Device, including value. This
+	 * implementation asks for any "get device" that may be out there, then
+	 * goes through all the received responses. There is an alternative
+	 * implementation commented out at the end of the class.
 	 */
 
 	log.info("Entering listDevices");
 	log.debug("Entering listDevices\n"+msg.serializeToJSONLD());
 	Message responseMsg = createResponseMessage(msg);
-//	String body = Body.CALL_GETALLDEVICES_CHE;
 	String body = Body.CALL_GETALLDEVICES_BUS;
 
 	String serviceResponse = UAALClient
 		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, JSON, body);
 	
-	// --This version is when getting devices from CHE--
-	
-	// Extract CHe response from the returned ServiceResponse
-//	Model jena = ModelFactory.createDefaultModel();
-//	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
-//	String turtle=jena.getRequiredProperty(
-//		jena.getResource("http://ontology.universAAL.org/InterIoT.owl#output1"), 
-//		jena.getProperty("http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue"))
-//		.getObject().asLiteral().getString();
-//	// Extract devices from CHe response
-//	jena = ModelFactory.createDefaultModel();
-//	jena.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
-//	List<Resource> devicesList = jena.listResourcesWithProperty(RDF.type, 
-//		jena.getResource("http://ontology.universaal.org/PhThing.owl#Device")).toList();
-//	// Return that list to interiot. TODO Check if this is OK
-//	responseMsg.setPayload(new IoTDevicePayload(jena));
-//	responseMsg.getMetadata().setStatus("OK");
-	
-	// --This version is when getting devices from themselves--
-	
 	Model jena = ModelFactory.createDefaultModel();
 	Model result = ModelFactory.createDefaultModel();
 	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
-	ResIterator roots = jena.listSubjectsWithProperty(RDF.type, "<http://ontology.universAAL.org/uAAL.owl#MultiServiceResponse>");
-	if(roots.hasNext()){ // Many responses aggregated into one
+	ResIterator roots = jena.listSubjectsWithProperty(RDF.type, URI_MULTI);
+	if (roots.hasNext()) { // Many responses aggregated into one
 	    Resource root = roots.next();
-	    NodeIterator responses = jena.listObjectsOfProperty(root, jena.getProperty("<http://ontology.universAAL.org/uAAL.owl#returns>"));
-	    while (responses.hasNext()){
+	    NodeIterator responses = jena.listObjectsOfProperty(root, jena.getProperty(URI_RETURNS));
+	    while (responses.hasNext()) {
 		// Each individual response is a serialized ServiceResponse, extract the output
 		String response = responses.next().asLiteral().getLexicalForm();
 		Model auxJena = ModelFactory.createDefaultModel();
 		auxJena.read(new ByteArrayInputStream(response.getBytes()), null, "TURTLE");
 		String turtle = auxJena.getRequiredProperty(
-			auxJena.getResource("http://ontology.universAAL.org/InterIoT.owl#output1"), 
-			auxJena.getProperty("http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue"))
+			auxJena.getResource(URI_OUTPUT), auxJena.getProperty(URI_PARAM))
 			.getObject().asLiteral().getString();
 		// The output is a serialized Device, add it to the result
 		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
 	    }
-	}else{ // Only one response
+	} else { // Only one response
 	    String turtle = jena.getRequiredProperty(
-		    jena.getResource("http://ontology.universAAL.org/InterIoT.owl#output1"), 
-		    jena.getProperty("http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue"))
+		    jena.getResource(URI_OUTPUT), jena.getProperty(URI_PARAM))
 		    .getObject().asLiteral().getString();
 	    // The output is a serialized Device, add it to the result
 	    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
 	}
 	responseMsg.setPayload(new IoTDevicePayload(result));
 	responseMsg.getMetadata().setStatus("OK");
-	
+
 	log.info("Completed listDevices");
 
 	return responseMsg;
@@ -715,5 +696,43 @@ public class UAALBridge extends AbstractBridge {
 	    return platformId;
 	}
     }
+    
+//    @Override
+//    public Message listDevices(Message msg) throws Exception {
+//	/*
+//	 * This is an alternative implementation of listDevices that checks
+//	 * existing Devices in CHe rather than ask for any potential
+//	 * "get device" service profile. The downside of this one is that some
+//	 * devices recorded by CHe may not have a "get device" service, or are
+//	 * not present anymore. On the good side, it is more simple and reliable
+//	 * (as long as CHe is running).
+//	 */
+//
+//	log.info("Entering listDevices");
+//	log.debug("Entering listDevices\n" + msg.serializeToJSONLD());
+//	Message responseMsg = createResponseMessage(msg);
+//	String body = Body.CALL_GETALLDEVICES_CHE;
+//
+//	String serviceResponse = UAALClient
+//		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, JSON, body);
+//	
+//	// Extract CHe response from the returned ServiceResponse
+//	Model jena2 = ModelFactory.createDefaultModel();
+//	jena2.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
+//	String turtle2 = jena2.getRequiredProperty(jena2.getResource(URI_OUTPUT),jena2.getProperty(URI_PARAM))
+//		.getObject().asLiteral().getString();
+//	// Extract devices from CHe response
+//	jena2 = ModelFactory.createDefaultModel();
+//	jena2.read(new ByteArrayInputStream(turtle2.getBytes()), null, "TURTLE");
+//	List<Resource> devicesList = jena2.listResourcesWithProperty(RDF.type,
+//		jena2.getResource("http://ontology.universaal.org/PhThing.owl#Device")).toList();
+//	// Return that list to interiot. TODO Check if this is OK
+//	responseMsg.setPayload(new IoTDevicePayload(jena2));
+//	responseMsg.getMetadata().setStatus("OK");
+//
+//	log.info("Completed listDevices");
+//
+//	return responseMsg;
+//    }
 
 }
