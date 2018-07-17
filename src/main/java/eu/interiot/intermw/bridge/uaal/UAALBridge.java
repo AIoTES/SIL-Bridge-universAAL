@@ -24,7 +24,9 @@ package eu.interiot.intermw.bridge.uaal;
 import static spark.Spark.post;
 
 import java.io.ByteArrayInputStream;
+import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
+import java.io.Writer;
 import java.net.URLEncoder;
 import java.util.HashSet;
 import java.util.List;
@@ -32,6 +34,8 @@ import java.util.Properties;
 
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.NodeIterator;
+import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
 import org.slf4j.Logger;
@@ -113,9 +117,6 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message registerPlatform(Message msg) throws Exception {
-	// Registers specified platform in the InterMW and creates bridge
-	// instance for the platform.
-
 	/*
 	 * Create a Space in universAAL REST API for INTER-IoT as a user. Then
 	 * create a Default Service Caller, since we will only ever need a
@@ -123,8 +124,6 @@ public class UAALBridge extends AbstractBridge {
 	 */
 
 	log.info("Entering registerPlatform");
-	
-	log.debug("Entering registerPlatform\n"+msg.serializeToJSONLD());
 	
 	boolean init=msg.getMetadata().getMessageTypes().contains(MessageTypesEnum.SYS_INIT);
 	if(!init){
@@ -150,8 +149,6 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message unregisterPlatform(Message msg) throws Exception {
-	// Unregisters specified platform.
-
 	/*
 	 * Delete the Space created in registerPlatform for INTER-IoT from the
 	 * uAAL REST API. This will also delete all its elements that were
@@ -163,7 +160,7 @@ public class UAALBridge extends AbstractBridge {
 	// will have to re-create and re-subscribe all the things it had before.
 
 	log.info("Entering unregisterPlatform");
-	log.debug("Entering unregisterPlatform\n"+msg.serializeToJSONLD());
+
 	UAALClient.delete(url + "spaces/" + space, usr, pwd);
 
 	log.info("Completed unregisterPlatform");
@@ -175,29 +172,15 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message subscribe(Message msg) throws Exception  {
-	// Subscribes client to observations provided by the platform for the
-	// specified device.
 	/*
-	 * The subscribe method must implement listener that accepts observation
-	 * messages sent from the platform to InterMW for corresponding
-	 * subscription. The listener is implemented using Spark framework. It
-	 * listens on port defined by the configuration property
-	 * bridge.callback.address (8980 by default) and path matching the
-	 * conversationId parameter. In the handler (callback) method the
-	 * observation data is converted to InterMW observation message of type
-	 * Message and sent upstream.
+	 * Subscribe to events sent by an existing device in uAAL and forward them to intermw
+	 * Create a CSubscriber for this thing
+	 *  CSubscriber
+	 *    CEP[sub=thing.getThingID, pred=*, obj=*]
+	 * The Subscriber: Receive anything about this device
 	 */
 
-	// Subscribe to events sent by an existing device in uAAL and forward them to intermw
-	// Create a CSubscriber for this thing
-	//  CSubscriber
-	//    CEP[sub=thing.getThingID, pred=*, obj=*]
-	// ConversationId IS NOT SubscriptionId. It appears I have to build the SubscriptionId
-	// and return it somehow TBD. ConversationId could perhaps be more akin to a ContextProvider URI...
-	// The Subscriber: Receive anything about this device
-
 	log.info("Entering subscribe");
-	log.debug("Entering subscribe\n"+msg.serializeToJSONLD());
 
 	String deviceURI, body;
 	String conversationId = msg.getMetadata().getConversationId().orElse(null);
@@ -222,12 +205,9 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message unsubscribe(Message msg) throws Exception {
-	// Cancels specified subscription created by the Subscribe.
-
-	// Remove the CSubscriber created in subscribe
+	/* Remove the CSubscriber created in subscribe */
 
 	log.info("Entering unsubscribe");
-	log.debug("Entering unsubscribe\n"+msg.serializeToJSONLD());
 
 	String conversationId = msg.getMetadata().getConversationId().orElse(null);
 
@@ -245,34 +225,34 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message platformCreateDevices(Message msg) throws Exception {
-	// An instruction for a platform to start managing (i.e. create) a new
-	// device.
-
-	// Replicate a thing from another platform into uAAL
-	// Create a Device mydevice here that acts like a LDDI Exporter, with:
-	//  SCallee
-	//    DeviceService>controls>mydevice[GET]
-	//      Return the current instance of mydevice
-	//    DeviceService>controls>mydevice>hasvalue>value[GET]
-	//      Return the current value of mydevice
-	//    DeviceService>controls>mydevice[CHANGE(mydevice*)] ???
-	//      Changes current instance with the same instance with different props values
-	//    DeviceService>controls>mydevice[REMOVE] ???
-	//      Removes current instance? Notify INTER-IoT subscribers? Remove self?
-	//
-	//  CPublisher
-	//    CEP[sub=mydev, pred=*, obj=*]
-	//      Publisher to be used by update(String deviceURI, Message message)
-	// The Publisher: A controller that can publish anything about this thing
-	// This is the publisher that has to be used by observe and updateDevice?
-	// When a call is requested from uaal, uAAL REST will send it to CALLBACK_SERVICE....
-	// Create here a RESTlet on that URL with Spark, and whenever a call arrives,
-	// build a Message with a Query and push it to InterIoT (?). Post the response back to uAAL
+	/*
+	* Replicate a thing from another platform into uAAL
+	* Create a Device mydevice here that acts like a LDDI Exporter, with:
+	*  SCallee
+	*    DeviceService>controls>mydevice[GET]
+	*      Return the current instance of mydevice
+	*    DeviceService>controls>mydevice>hasvalue>value[GET]
+	*      Return the current value of mydevice
+	*    DeviceService>controls>mydevice[CHANGE(mydevice*)] ???
+	*      Changes current instance with the same instance with different props values
+	*    DeviceService>controls>mydevice[REMOVE] ???
+	*      Removes current instance? Notify INTER-IoT subscribers? Remove self?
+	*
+	*  CPublisher
+	*    CEP[sub=mydev, pred=*, obj=*]
+	*      Publisher to be used by update(String deviceURI, Message message)
+	* The Publisher: A controller that can publish anything about this thing
+	* This is the publisher that has to be used by observe and updateDevice?
+	* When a call is requested from uaal, uAAL REST will send it to CALLBACK_SERVICE....
+	* Create a RESTlet on that URL with Spark, and whenever a call arrives,
+	* build a Message with a Query and push it to InterIoT (?). Post the response back to uAAL
+	*/
 	
 	// TODO For now I am assuming this bridge can answer to calls from uAAL asking for:
 	// Get me the entire device with all its properties
 	// Get me the "value" sensed/controlled by the device
 	// Should I cover anything else?
+	// ...but platformCreateDevices is not for what I though. What then?
 
 	log.info("Entering platformCreateDevice");
 	log.debug("Entering platformCreateDevice\n"+msg.serializeToJSONLD());
@@ -311,12 +291,12 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message platformUpdateDevices(Message msg) throws Exception {
-	// An instruction for a platform to update information about a device it
-	// is managing
-
-	// Modify the status of a thing from another platform and notify uAAL
-	// Modify the Device mydevice that will be handled by the Callee,
-	// TODO publish the change as event?
+	/*
+	* Modify the status of a thing from another platform and notify uAAL
+	* Modify the Device mydevice that will be handled by the Callee
+	*/
+	// TODO publish the change as event? I'd say no...
+	// ...but platformUpdateDevices is not for what I though. What then?
 
 	log.info("Entering platformUpdateDevice");
 	log.debug("Entering platformUpdateDevice\n"+msg.serializeToJSONLD());
@@ -355,11 +335,7 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message platformDeleteDevices(Message msg) throws Exception {
-	// An instruction for a platform to stop managing (i.e. remove) a
-	// device.
-
-	// Remove the Device mydevice that was created in create(String thingID,
-	// String thingType)
+	/* Remove the Device mydevice created in platformUpdateDevices */
 
 	log.info("Entering platformDeleteDevice");
 	log.debug("Entering platformDeleteDevice\n"+msg.serializeToJSONLD());
@@ -382,20 +358,19 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message query(Message msg) throws Exception {
-	// Makes a query about a status and last observation made by a specified
-	// device.
-
-	// Create a ServiceRequest asking for the equivalent query from a DefaultServiceCaller
-	//  SCaller
-	//    DeviceService>controls>URI=query.getEntityID + MY_URI=query.getType
-	// Return a parsed Thing from the returned Device instance
+	/*
+	 * Create a ServiceRequest asking for the equivalent query from a DefaultServiceCaller
+	 *  SCaller
+	 *    DeviceService>controls>URI=query.getEntityID + MY_URI=query.getType
+	 * Return a parsed Thing from the returned Device instance
+	 */
 
 	log.info("Entering query");
 	log.debug("Entering query\n"+msg.serializeToJSONLD());
 	Message responseMsg = createResponseMessage(msg);
-	String deviceURI="";
+	String deviceURI=""; //TODO How to extract single device from msg?
 	String deviceType="";
-	// TODO Also many devices per call? How to extract single device from msg?
+	// Many devices per call? According to docs, no
 	String body = Body.CALL_GETDEVICE
 		.replace(Body.URI, deviceURI)
 		.replace(Body.TYPE, deviceType);
@@ -403,14 +378,16 @@ public class UAALBridge extends AbstractBridge {
 	String serviceResponse = UAALClient
 		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
 	Model jena = ModelFactory.createDefaultModel();
+	Model result = ModelFactory.createDefaultModel();
 	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
-	Resource device=jena.getRequiredProperty(
+	// The output is itself a serialized device TODO prevent multivalues
+	String output=jena.getRequiredProperty(
 		jena.getResource("http://ontology.universAAL.org/InterIoT.owl#output1"), 
 		jena.getProperty("http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue"))
-		.getResource();
-	responseMsg.setPayload(new IoTDevicePayload(device.getModel())); // Isn't the model the jena var?
+		.getObject().asLiteral().getString();
+	result.read(new ByteArrayInputStream(output.getBytes()), null, "TURTLE");
+	responseMsg.setPayload(new IoTDevicePayload(result));
 	responseMsg.getMetadata().setStatus("OK");
-	// TODO return response. What if many Resources?
 
 	log.info("Completed query");
 
@@ -419,32 +396,69 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message listDevices(Message msg) throws Exception {
-	// Makes a query to a platform to get all devices managed by it, that it
-	// deems discoverable
-
-	// TODO Do they have to be only the Ids? Or the full reconstructed Device, including value? 
+	/* 
+	 * Return the full reconstructed Device, including value.
+	 * There are 2 options here: 1) Ask the CHE about Device resources.
+	 * 2) Send a Request to all with an output of type Device. 
+	 */
 
 	log.info("Entering listDevices");
 	log.debug("Entering listDevices\n"+msg.serializeToJSONLD());
 	Message responseMsg = createResponseMessage(msg);
-	String body = Body.CALL_GETALLDEVICES;
+//	String body = Body.CALL_GETALLDEVICES_CHE;
+	String body = Body.CALL_GETALLDEVICES_BUS;
 
 	String serviceResponse = UAALClient
 		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, JSON, body);
+	
+	// --This version is when getting devices from CHE--
+	
 	// Extract CHe response from the returned ServiceResponse
-	Model jena = ModelFactory.createDefaultModel();
-	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
-	String turtle=jena.getRequiredProperty(
-		jena.getResource("http://ontology.universAAL.org/InterIoT.owl#output1"), 
-		jena.getProperty("http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue"))
-		.getObject().asLiteral().getString();
-	// Extract devices from CHe response
-	jena = ModelFactory.createDefaultModel();
-	jena.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
+//	Model jena = ModelFactory.createDefaultModel();
+//	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
+//	String turtle=jena.getRequiredProperty(
+//		jena.getResource("http://ontology.universAAL.org/InterIoT.owl#output1"), 
+//		jena.getProperty("http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue"))
+//		.getObject().asLiteral().getString();
+//	// Extract devices from CHe response
+//	jena = ModelFactory.createDefaultModel();
+//	jena.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
 //	List<Resource> devicesList = jena.listResourcesWithProperty(RDF.type, 
 //		jena.getResource("http://ontology.universaal.org/PhThing.owl#Device")).toList();
-	// Return that list to interiot. TODO Check if this is OK
-	responseMsg.setPayload(new IoTDevicePayload(jena));
+//	// Return that list to interiot. TODO Check if this is OK
+//	responseMsg.setPayload(new IoTDevicePayload(jena));
+//	responseMsg.getMetadata().setStatus("OK");
+	
+	// --This version is when getting devices from themselves--
+	
+	Model jena = ModelFactory.createDefaultModel();
+	Model result = ModelFactory.createDefaultModel();
+	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
+	ResIterator roots = jena.listSubjectsWithProperty(RDF.type, "<http://ontology.universAAL.org/uAAL.owl#MultiServiceResponse>");
+	if(roots.hasNext()){ // Many responses aggregated into one
+	    Resource root = roots.next();
+	    NodeIterator responses = jena.listObjectsOfProperty(root, jena.getProperty("<http://ontology.universAAL.org/uAAL.owl#returns>"));
+	    while (responses.hasNext()){
+		// Each individual response is a serialized ServiceResponse, extract the output
+		String response = responses.next().asLiteral().getLexicalForm();
+		Model auxJena = ModelFactory.createDefaultModel();
+		auxJena.read(new ByteArrayInputStream(response.getBytes()), null, "TURTLE");
+		String turtle = auxJena.getRequiredProperty(
+			auxJena.getResource("http://ontology.universAAL.org/InterIoT.owl#output1"), 
+			auxJena.getProperty("http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue"))
+			.getObject().asLiteral().getString();
+		// The output is a serialized Device, add it to the result
+		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
+	    }
+	}else{ // Only one response
+	    String turtle = jena.getRequiredProperty(
+		    jena.getResource("http://ontology.universAAL.org/InterIoT.owl#output1"), 
+		    jena.getProperty("http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue"))
+		    .getObject().asLiteral().getString();
+	    // The output is a serialized Device, add it to the result
+	    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
+	}
+	responseMsg.setPayload(new IoTDevicePayload(result));
 	responseMsg.getMetadata().setStatus("OK");
 	
 	log.info("Completed listDevices");
@@ -454,26 +468,50 @@ public class UAALBridge extends AbstractBridge {
 
     @Override
     public Message observe(Message msg) throws Exception {
-	// Pushes given observation message from InterMW to platform (bridge
-	// acting as a publisher for platform)
+	/* Send event to universAAL */
+	// TODO There are going to be multiple observations? Maybe
 
 	log.info("Entering observe");
 	log.debug("Entering observe\n"+msg.serializeToJSONLD());
-	Message responseMsg = createResponseMessage(msg);
-	String deviceURI = "";// TODO There are going to be multiple observations. Maybe
-	String body = "";// TODO How to convert? Can I expect to receive a uAAL ContextEvent thanks to IPSM?
+	
+	Model event = msg.getPayload().getJenaModel();
+	String deviceURI = event.listObjectsOfProperty(RDF.subject).next().asResource().getURI();
+	Writer turtle = new StringWriter();
+	event.write(turtle, "TURTLE");
+	String body = turtle.toString(); // TODO Check this way to get event works
+	turtle.close();
 
 	UAALClient.post(url + "spaces/" + space + "/context/publishers/" + getSuffix(deviceURI), usr, pwd, TEXT, body);
 
 	log.info("Completed observe");
 
-	return responseMsg;
+	return ok(msg);
     }
 
     @Override
     public Message actuate(Message msg) throws Exception {
-	// TODO Same as Observe, except the message payload contains actuation instructions.
-	return null;
+	/*
+	 * Here I am going to assume that it works like observer, only that the
+	 * payload is an "actuation" instead of am "observation", and that, just
+	 * like in observer, it has been properly translated to uAAL format by
+	 * IPSM. In the case of observe, that was a ContextEvent. Here it should
+	 * be a ServiceRequest (but that's considerably more difficult).
+	 */
+	
+	log.info("Entering actuate");
+	log.debug("Entering actuate\n"+msg.serializeToJSONLD());
+	
+	Model request = msg.getPayload().getJenaModel();
+	Writer turtle = new StringWriter();
+	request.write(turtle, "TURTLE");
+	String body = turtle.toString(); // TODO Check this way to get request works
+	turtle.close();
+
+	UAALClient.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
+
+	log.info("Completed actuate");
+
+	return ok(msg);
     }
 
     // ------------------------------------------
