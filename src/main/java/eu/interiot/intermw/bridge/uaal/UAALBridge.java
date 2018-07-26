@@ -43,12 +43,12 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Strings;
 
+import eu.interiot.intermw.bridge.BridgeConfiguration;
 import eu.interiot.intermw.bridge.abstracts.AbstractBridge;
 import eu.interiot.intermw.bridge.uaal.client.Body;
 import eu.interiot.intermw.bridge.uaal.client.UAALClient;
 import eu.interiot.intermw.comm.broker.exceptions.BrokerException;
 import eu.interiot.intermw.commons.exceptions.MiddlewareException;
-import eu.interiot.intermw.commons.interfaces.Configuration;
 import eu.interiot.intermw.commons.model.Platform;
 import eu.interiot.message.Message;
 import eu.interiot.message.MessageMetadata;
@@ -86,15 +86,14 @@ public class UAALBridge extends AbstractBridge {
     private HashSet<String> validCallback_DEVICE =new HashSet<String>();
     private HashSet<String> validCallback_VALUE =new HashSet<String>();
 
-    public UAALBridge(Configuration config, Platform platform) throws MiddlewareException {
+    public UAALBridge(BridgeConfiguration config, Platform platform) throws MiddlewareException {
 	super(config, platform);
 	log.debug("UniversAAL bridge is initializing...");
-	Properties properties = configuration.getProperties();
 	try {
-	    url = properties.getProperty(PROPERTIES_PREFIX + "url");
-	    usr = properties.getProperty(PROPERTIES_PREFIX + "user");
-	    pwd = properties.getProperty(PROPERTIES_PREFIX + "password");
-	    space = properties.getProperty(PROPERTIES_PREFIX + "space");
+	    url = config.getProperty(PROPERTIES_PREFIX + "url");
+	    usr = config.getProperty(PROPERTIES_PREFIX + "user");
+	    pwd = config.getProperty(PROPERTIES_PREFIX + "password");
+	    space = config.getProperty(PROPERTIES_PREFIX + "space");
 	    bridgeCallback_ID = "/"+encodePlatformId(platform.getPlatformId());
 	    bridgeCallback_CONTEXT = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_CONTEXT;
 	    bridgeCallback_DEVICE = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_DEVICE;
