@@ -30,7 +30,6 @@ import java.io.Writer;
 import java.net.URLEncoder;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Properties;
 
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -168,6 +167,12 @@ public class UAALBridge extends AbstractBridge {
 	log.info("Completed unregisterPlatform");
 
 	return ok(msg);
+    }
+    
+    @Override
+    public Message updatePlatform(Message arg0) throws Exception {
+	// TODO Auto-generated method stub
+	return null;
     }
 
     // ------------------------------------------
@@ -411,7 +416,7 @@ public class UAALBridge extends AbstractBridge {
 	String body = Body.CALL_GETALLDEVICES_BUS;
 
 	String serviceResponse = UAALClient
-		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, JSON, body);
+		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
 	
 	Model jena = ModelFactory.createDefaultModel();
 	Model result = ModelFactory.createDefaultModel();
@@ -597,7 +602,7 @@ public class UAALBridge extends AbstractBridge {
 		    try {
 			wait(2500);
 			UAALClient.post(url+"spaces/"+space+"/service/callees/"+req.params(":deviceId")+"?o="+originalCall,
-				usr, pwd, JSON, body);
+				usr, pwd, TEXT, body);
 		    } catch (Exception e) {
 			log.error("Error sending service response back to uAAL at registerServiceCallback1", e);
 		    }
@@ -668,15 +673,14 @@ public class UAALBridge extends AbstractBridge {
     }
 
     private String getSpecializedType(Resource device) {
-	// TODO Auto-generated method stub: Extract device most specialized RDF Type
-	String type = device
-		.getProperty(device.getModel()
-			.getProperty("http://inter-iot.eu/device-type"))
-		.getObject().asLiteral().getString();
-	if (type.equals("LIGHT"))//TODO Check possible values of interiot types
-	    return "http://ontology.universAAL.org/Device.owl#LightController";
-
-	return "http://ontology.universAAL.org/Device.owl#TemperatureSensor";
+	try{
+	    //TODO Extract device most specialized RDF Type !!!
+	}catch(Exception ex){
+	    log.warn("Error extracting most specialized Device type. Using generic uAAL ValueDevice", ex);
+	    return "http://ontology.universAAL.org/Device.owl#ValueDevice";
+	}
+	log.warn("Could not extract most specialized Device type. Using generic uAAL ValueDevice");
+	return "http://ontology.universAAL.org/Device.owl#ValueDevice";
     }
     
     private String encodePlatformId(String platformId){

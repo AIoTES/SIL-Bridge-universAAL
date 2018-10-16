@@ -5,20 +5,20 @@
 
     <groupId>eu.interiot.intermw</groupId>
     <artifactId>mw.bridge.uaal</artifactId>
-    <version>2.2.2</version>
+    <version>2.3.0</version>
     <name>INTER-IoT Bridge for UniversAAL Platform</name>
 
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <intermw.version>2.2.2</intermw.version>
+        <intermw.version>2.3.0</intermw.version>
     </properties>
 
     <dependencies>
         <dependency>
             <groupId>eu.interiot.intermw</groupId>
             <artifactId>mw.bridges.api</artifactId>
-            <version>2.2.2</version>
+            <version>2.3.0</version>
         </dependency>
 <!--         <dependency> -->
 <!--             <groupId>com.googlecode.json-simple</groupId> -->

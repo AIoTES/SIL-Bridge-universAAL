@@ -48,11 +48,6 @@ public class UAALClient {
 	    wr.flush();
 	    wr.close();
 
-	    if (conn.getResponseCode() < 200 || conn.getResponseCode() > 299) {
-		throw new Exception("Unsuccessful server response: "
-			+ conn.getResponseCode());
-	    }
-
 	    BufferedReader rd = new BufferedReader(
 		    new InputStreamReader(conn.getInputStream(), "UTF-8"));
 	    String line = rd.readLine();
@@ -61,6 +56,12 @@ public class UAALClient {
 		result.append(line);
 		line = rd.readLine();
 	    }
+	    
+	    if (conn.getResponseCode() < 200 || conn.getResponseCode() > 299) {
+		throw new Exception("Unsuccessful server response: "
+			+ conn.getResponseCode() + ". Result: " + result.toString());
+	    }
+	    
 	    if (!result.toString().isEmpty()) {
 		return result.toString();
 	    }
