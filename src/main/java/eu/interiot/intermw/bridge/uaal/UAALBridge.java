@@ -468,7 +468,8 @@ public class UAALBridge extends AbstractBridge {
 	turtle.close();
 	
 	//TODO PATCH This is to temporarily solve the issue of uAAL serializing only the object in the first line
-	String eventURI = event.listSubjectsWithProperty(RDF.type, URI_EVENT).next().asResource().getURI();
+//	String eventURI = event.listSubjectsWithProperty(RDF.type, URI_EVENT).next().asResource().getURI();
+	String eventURI = event.listStatements(null, RDF.type, event.getResource(URI_EVENT)).nextStatement().getSubject().getURI();
 	String firstLine = "<" + eventURI + "> <" + RDF.type.toString() + "> <" + URI_EVENT + "> . ";
 
 	UAALClient.post(url + "spaces/" + space + "/context/publishers/" + getSuffix(deviceURI), usr, pwd, TEXT, firstLine+body);
