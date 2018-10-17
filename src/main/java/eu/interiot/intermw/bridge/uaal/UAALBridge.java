@@ -71,6 +71,7 @@ public class UAALBridge extends AbstractBridge {
     private static final String URI_MULTI = "http://ontology.universAAL.org/uAAL.owl#MultiServiceResponse";
     private static final String URI_PARAM = "http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue";
     private static final String URI_OUTPUT = "http://ontology.universAAL.org/InterIoT.owl#output1";
+    private static final String URI_EVENT = "http://ontology.universAAL.org/Context.owl#ContextEvent";
     private final Logger log = LoggerFactory.getLogger(UAALBridge.class);
     private String url;
     private String usr;
@@ -463,10 +464,14 @@ public class UAALBridge extends AbstractBridge {
 	String deviceURI = event.listObjectsOfProperty(RDF.subject).next().asResource().getURI();
 	Writer turtle = new StringWriter();
 	event.write(turtle, "TURTLE");
-	String body = turtle.toString(); // TODO Check this way to get event works
+	String body = turtle.toString();
 	turtle.close();
+	
+	//TODO PATCH This is to temporarily solve the issue of uAAL serializing only the object in the first line
+	String eventURI = event.listSubjectsWithProperty(RDF.type, URI_EVENT).next().asResource().getURI();
+	String firstLine = "<" + eventURI + "> <" + RDF.type.toString() + "> <" + URI_EVENT + "> . ";
 
-	UAALClient.post(url + "spaces/" + space + "/context/publishers/" + getSuffix(deviceURI), usr, pwd, TEXT, body);
+	UAALClient.post(url + "spaces/" + space + "/context/publishers/" + getSuffix(deviceURI), usr, pwd, TEXT, firstLine+body);
 
 	log.info("Completed observe");
 
