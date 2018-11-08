@@ -57,7 +57,8 @@ public class UAALClient {
 		line = rd.readLine();
 	    }
 	    
-	    if (conn.getResponseCode() < 200 || conn.getResponseCode() > 299) {
+	    if ((conn.getResponseCode() < 200 || conn.getResponseCode() > 299) 
+		    && !(conn.getResponseCode()==409 && type.equals("POST"))) { // POST on existing
 		throw new Exception("Unsuccessful server response: "
 			+ conn.getResponseCode() + ". Result: " + result.toString());
 	    }
