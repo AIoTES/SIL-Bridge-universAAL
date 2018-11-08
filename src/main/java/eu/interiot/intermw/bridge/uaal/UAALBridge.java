@@ -135,8 +135,8 @@ public class UAALBridge extends AbstractBridge {
 	    String bodyCaller = Body.CREATE_CALLER
 		    .replace(Body.ID, DEFAULT_CALLER);
 
-	    UAALClient.post(url + "spaces/", usr, pwd, JSON, bodySpace);
-	    UAALClient.post(url + "spaces/" + space + "/service/callers/", usr, pwd, JSON, bodyCaller);
+	    UAALClient.post(url + "spaces", usr, pwd, JSON, bodySpace);
+	    UAALClient.post(url + "spaces/" + space + "/service/callers", usr, pwd, JSON, bodyCaller);
 	}// Else do not re-create platform (only to save network, it's OK anyway)
 	
 	// Register the Spark callback servlets, only once per platform, INIT or not
@@ -202,7 +202,7 @@ public class UAALBridge extends AbstractBridge {
 			.replace(Body.ID, getSuffix(deviceURI))
 			.replace(Body.URI, deviceURI)
 			.replace(Body.CALLBACK, bridgeCallback_CONTEXT+conversationId);
-		UAALClient.post(url + "spaces/" + space + "/context/subscribers/", usr, pwd, JSON, body);
+		UAALClient.post(url + "spaces/" + space + "/context/subscribers", usr, pwd, JSON, body);
 	    }// Else do not re-create subscriber (only to save network, it's OK anyway)
 	}
 
@@ -287,9 +287,9 @@ public class UAALBridge extends AbstractBridge {
 		    .replace(Body.URI, deviceURI);
 	    validCallback_DEVICE.add(getSuffixCalleeGET(deviceURI));
 	    validCallback_VALUE.add(getSuffixCalleeGETVALUE(deviceURI));
-	    UAALClient.post(url + "spaces/" + space + "/service/callees/", usr, pwd, JSON, bodyS1);
-	    UAALClient.post(url + "spaces/" + space + "/service/callees/", usr, pwd, JSON, bodyS2);
-	    UAALClient.post(url + "spaces/" + space + "/context/publishers/", usr, pwd, JSON, bodyC);
+	    UAALClient.post(url + "spaces/" + space + "/service/callees", usr, pwd, JSON, bodyS1);
+	    UAALClient.post(url + "spaces/" + space + "/service/callees", usr, pwd, JSON, bodyS2);
+	    UAALClient.post(url + "spaces/" + space + "/context/publishers", usr, pwd, JSON, bodyC);
 	}
 
 	log.info("Completed platformCreateDevice");
