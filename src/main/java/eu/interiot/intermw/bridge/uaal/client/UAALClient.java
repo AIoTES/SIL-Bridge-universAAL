@@ -48,24 +48,24 @@ public class UAALClient {
 	    wr.flush();
 	    wr.close();
 
-	    if (conn.getResponseCode() < 200 || conn.getResponseCode() > 299) {
-		BufferedReader rd = new BufferedReader(
-			new InputStreamReader(conn.getInputStream(), "UTF-8"));
-		String line = rd.readLine();
-		StringBuilder result = new StringBuilder();
-		while (line != null) {
-		    result.append(line);
-		    line = rd.readLine();
-		}
+	    if (conn.getResponseCode() >= 200 && conn.getResponseCode() <= 299) {
+	    	BufferedReader rd = new BufferedReader(
+	    			new InputStreamReader(conn.getInputStream(), "UTF-8"));
+	    	String line = rd.readLine();
+	    	StringBuilder result = new StringBuilder();
+	    	while (line != null) {
+	    		result.append(line);
+	    		line = rd.readLine();
+	    	}
 
-		if (!result.toString().isEmpty()) {
-		    return result.toString();
-		}
-	    }else if(conn.getResponseCode()==409 && type.equals("POST")){ // getInputStream fails if 409
-		return "OK"; // POST on existing. Ignore
+	    	if (!result.toString().isEmpty()) {
+	    		return result.toString();
+	    	}
+	    }else if(conn.getResponseCode()==409 && method.equals("POST")){ // getInputStream fails if 409
+	    	return "OK"; // POST on existing. Ignore
 	    }else{
-		throw new Exception("Unsuccessful server response: "
-			+ conn.getResponseCode());
+	    	throw new Exception("Unsuccessful server response: "
+	    			+ conn.getResponseCode());
 	    }
 	} finally {
 	    // close the connection and set all objects to null
