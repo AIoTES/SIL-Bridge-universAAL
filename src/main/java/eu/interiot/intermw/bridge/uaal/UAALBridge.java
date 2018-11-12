@@ -288,8 +288,8 @@ public class UAALBridge extends AbstractBridge {
 	    bodyC = Body.CREATE_PUBLISHER
 		    .replace(Body.ID, getSuffix(deviceURI))
 		    .replace(Body.URI, deviceURI);
-	    validCallback_DEVICE.add(getSuffixCalleeGET(deviceURI));
-	    validCallback_VALUE.add(getSuffixCalleeGETVALUE(deviceURI));
+	    validCallback_DEVICE.add(getSuffix(deviceURI));
+	    validCallback_VALUE.add(getSuffix(deviceURI));
 	    UAALClient.post(url + "spaces/" + space + "/service/callees", usr, pwd, JSON, bodyS1);
 	    UAALClient.post(url + "spaces/" + space + "/service/callees", usr, pwd, JSON, bodyS2);
 	    UAALClient.post(url + "spaces/" + space + "/context/publishers", usr, pwd, JSON, bodyC);
@@ -332,8 +332,8 @@ public class UAALBridge extends AbstractBridge {
 	    bodyC = Body.CREATE_PUBLISHER
 		    .replace(Body.ID, getSuffix(deviceURI))
 		    .replace(Body.URI, deviceURI);
-	    validCallback_DEVICE.add(getSuffixCalleeGET(deviceURI));
-	    validCallback_VALUE.add(getSuffixCalleeGETVALUE(deviceURI));
+	    validCallback_DEVICE.add(getSuffix(deviceURI));
+	    validCallback_VALUE.add(getSuffix(deviceURI));
 	    UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffixCalleeGET(deviceURI), usr, pwd, JSON, bodyS1);
 	    UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffixCalleeGETVALUE(deviceURI), usr, pwd, JSON, bodyS2);
 	    UAALClient.put(url + "spaces/" + space + "/context/publishers/"+getSuffix(deviceURI), usr, pwd, JSON, bodyC);
@@ -353,8 +353,8 @@ public class UAALBridge extends AbstractBridge {
 
 	for (Resource device : getDevices(msg.getPayload())) { 
 	    String deviceURI=device.getURI();
-	    validCallback_DEVICE.remove(getSuffixCalleeGET(deviceURI));
-	    validCallback_VALUE.remove(getSuffixCalleeGETVALUE(deviceURI));
+	    validCallback_DEVICE.remove(getSuffix(deviceURI));
+	    validCallback_VALUE.remove(getSuffix(deviceURI));
 	    UAALClient.delete(url+"spaces/"+space+"/service/callees/"+getSuffixCalleeGET(deviceURI), usr, pwd);
 	    UAALClient.delete(url+"spaces/"+space+"/service/callees/"+getSuffixCalleeGETVALUE(deviceURI), usr, pwd);
 	    UAALClient.delete(url + "spaces/" + space + "/context/publishers/" + getSuffix(deviceURI), usr, pwd);
