@@ -473,12 +473,48 @@ public class UAALBridge extends AbstractBridge {
 	    // The output is a serialized Device, add it to the result
 	    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
 	}
-	responseMsg.setPayload(new IoTDevicePayload(result));
-	responseMsg.getMetadata().setStatus("OK");
+	
+//	responseMsg.setPayload(new IoTDevicePayload(result));
+//	responseMsg.getMetadata().setStatus("OK");
 
 	log.info("Completed listDevices");
 
-	return responseMsg;
+	return deviceRegistryInitializeNew(msg, result);
+//	return responseMsg;
+    }
+    
+//    private Message deviceRegistryInitializeOld(Message original, Model jena) throws Exception{
+//	// Initialize device registry
+//	try{
+//	    Message deviceRegistryInitializeMessage = new Message();
+//	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
+//	    metadata.initializeMetadata();
+//	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
+//	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
+//	    //metadata.setConversationId(conversationId); 
+//	    MessagePayload devicePayload = new MessagePayload(jena);
+//	    deviceRegistryInitializeMessage.setMetadata(metadata);
+//	    deviceRegistryInitializeMessage.setPayload(devicePayload);
+//	    publisher.publish(deviceRegistryInitializeMessage);
+//	    log.debug("Device_Registry_Initialize message has been published upstream.");
+//	    return ok(original);
+//	}catch(Exception ex){
+//	    return error(original);
+//	}
+//    }
+    
+    private Message deviceRegistryInitializeNew(Message original, Model jena){
+	Message responseMessage = this.createResponseMessage(original);
+	responseMessage.getMetadata().setMessageType(MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
+	responseMessage.getMetadata().addMessageType(MessageTypesEnum.RESPONSE);
+	try {
+	    MessagePayload mwMessagePayload = new MessagePayload(jena);
+	    responseMessage.setPayload(mwMessagePayload);
+	} catch (Exception e) {
+	    responseMessage.getMetadata().addMessageType(MessageTypesEnum.ERROR);
+	    responseMessage.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
+	}
+	return responseMessage;
     }
 
     @Override
