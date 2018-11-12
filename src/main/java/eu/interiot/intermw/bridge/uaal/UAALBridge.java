@@ -67,7 +67,7 @@ public class UAALBridge extends AbstractBridge {
     private final static String PATH_CONTEXT = "/uaal/context/";
     private final static String PATH_DEVICE = "/uaal/device/";
     private final static String PATH_VALUE = "/uaal/value/";
-    private static final String URI_RETURNS = "http://ontology.universAAL.org/uAAL.owl#returns";
+//    private static final String URI_RETURNS = "http://ontology.universAAL.org/uAAL.owl#returns";
     private static final String URI_MULTI = "http://ontology.universAAL.org/uAAL.owl#MultiServiceResponse";
     private static final String URI_PARAM = "http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue";
     private static final String URI_OUTPUT = "http://ontology.universAAL.org/InterIoT.owl#output1";
@@ -407,7 +407,7 @@ public class UAALBridge extends AbstractBridge {
 	    log.warn("Could not find devices in uAAL because there was an error");
 	    return error(msg);
 	}
-	// The output is itself a serialized device TODO prevent multivalues
+	// The output is itself a serialized device TODO prevent multivalues (see listDevices)
 	String output=jena.getRequiredProperty(
 		jena.getResource(URI_OUTPUT), 
 		jena.getProperty(URI_PARAM))
@@ -454,25 +454,22 @@ public class UAALBridge extends AbstractBridge {
 	    return error(msg);
 	}
 	
-	ResIterator roots = jena.listSubjectsWithProperty(RDF.type, URI_MULTI);
-	if (roots.hasNext()) { // Many responses aggregated into one
-	    Resource root = roots.next();
-	    NodeIterator responses = jena.listObjectsOfProperty(root, jena.getProperty(URI_RETURNS));
+	ResIterator roots = jena.listResourcesWithProperty(RDF.type, jena.getResource(URI_MULTI));
+	if (roots.hasNext()) { // Many responses aggregated into one RDF list. Values are in each "first"
+	    NodeIterator responses = jena.listObjectsOfProperty(RDF.first);
 	    while (responses.hasNext()) {
 		// Each individual response is a serialized ServiceResponse, extract the output
 		String response = responses.next().asLiteral().getLexicalForm();
 		Model auxJena = ModelFactory.createDefaultModel();
 		auxJena.read(new ByteArrayInputStream(response.getBytes()), null, "TURTLE");
-		String turtle = auxJena.getRequiredProperty(
-			auxJena.getResource(URI_OUTPUT), auxJena.getProperty(URI_PARAM))
-			.getObject().asLiteral().getString();
+		String turtle = auxJena.listObjectsOfProperty(auxJena.getProperty(URI_PARAM))
+			.next().asLiteral().getString();
 		// The output is a serialized Device, add it to the result
 		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
 	    }
-	} else { // Only one response
-	    String turtle = jena.getRequiredProperty(
-		    jena.getResource(URI_OUTPUT), jena.getProperty(URI_PARAM))
-		    .getObject().asLiteral().getString();
+	} else { // Only one response, no list, it is right in the model
+	    String turtle = jena.listObjectsOfProperty(jena.getProperty(URI_PARAM))
+		    .next().asLiteral().getString();
 	    // The output is a serialized Device, add it to the result
 	    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
 	}
