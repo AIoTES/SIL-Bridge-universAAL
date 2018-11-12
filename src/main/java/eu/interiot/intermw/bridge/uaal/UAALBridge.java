@@ -492,14 +492,14 @@ public class UAALBridge extends AbstractBridge {
 	
 	Model event = msg.getPayload().getJenaModel();
 	String deviceURI = event.listObjectsOfProperty(RDF.subject).next().asResource().getURI();
+	String eventURI = event.listStatements(null, RDF.type, event.getResource(URI_EVENT)).nextStatement().getSubject().getURI();
 	Writer turtle = new StringWriter();
-	event.write(turtle, "TURTLE");
+	event.removeAll(event.getResource(eventURI), event.getProperty(URI_PROVIDER), null)
+	.write(turtle, "TURTLE");
 	String body = turtle.toString();
 	turtle.close();
 	
 	//TODO PATCH This is to temporarily solve the issue of uAAL serializing only the object in the first line
-//	String eventURI = event.listSubjectsWithProperty(RDF.type, URI_EVENT).next().asResource().getURI();
-	String eventURI = event.listStatements(null, RDF.type, event.getResource(URI_EVENT)).nextStatement().getSubject().getURI();
 	String firstLine = "<" + eventURI + "> <" + RDF.type.toString() + "> <" + URI_EVENT + "> . ";
 
 	UAALClient.post(url + "spaces/" + space + "/context/publishers/" + getSuffix(deviceURI), usr, pwd, TEXT, firstLine+body);
