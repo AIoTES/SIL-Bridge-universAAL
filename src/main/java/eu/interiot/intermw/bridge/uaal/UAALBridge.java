@@ -74,6 +74,9 @@ public class UAALBridge extends AbstractBridge {
     private static final String URI_EVENT = "http://ontology.universAAL.org/Context.owl#ContextEvent";
     private static final String URI_STATUS = "http://ontology.universAAL.org/uAAL.owl#callStatus";
     private static final String URI_SUCCEEDED = "http://ontology.universAAL.org/uAAL.owl#call_succeeded";
+    private static final String URI_TIMEOUT = "http://ontology.universAAL.org/uAAL.owl#response_timed_out";
+    private static final String URI_FAIL = "http://ontology.universAAL.org/uAAL.owl#service_specific_failure";
+    private static final String URI_DENIED = "http://ontology.universAAL.org/uAAL.owl#denied";
     private static final String URI_NOMATCH = "http://ontology.universAAL.org/uAAL.owl#no_matching_service_found";
     private final Logger log = LoggerFactory.getLogger(UAALBridge.class);
     private String url;
@@ -390,17 +393,18 @@ public class UAALBridge extends AbstractBridge {
 		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
 	Model jena = ModelFactory.createDefaultModel();
 	Model result = ModelFactory.createDefaultModel();
-	if(!jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_SUCCEEDED))){
-	    if(!jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))){
-		log.warn("Could not find devices in uAAL because there is no one answering to the request");
-		responseMsg.setPayload(new IoTDevicePayload(result));
-		responseMsg.getMetadata().setStatus("OK");
-		return responseMsg;
-	    }
+	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
+	if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))){
+	    log.warn("Could not find devices in uAAL because there is no one answering to the request");
+	    responseMsg.setPayload(new IoTDevicePayload(result));
+	    responseMsg.getMetadata().setStatus("OK");
+	    return responseMsg;
+	}else if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_TIMEOUT)) ||
+		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_FAIL)) ||
+		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_DENIED))){
 	    log.warn("Could not find devices in uAAL because there was an error");
 	    return error(msg);
 	}
-	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
 	// The output is itself a serialized device TODO prevent multivalues
 	String output=jena.getRequiredProperty(
 		jena.getResource(URI_OUTPUT), 
@@ -435,16 +439,19 @@ public class UAALBridge extends AbstractBridge {
 	Model jena = ModelFactory.createDefaultModel();
 	Model result = ModelFactory.createDefaultModel();
 	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
-	if(!jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_SUCCEEDED))){
-	    if(!jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))){
-		log.warn("Could not find devices in uAAL because there is no one answering to the request");
-		responseMsg.setPayload(new IoTDevicePayload(result));
-		responseMsg.getMetadata().setStatus("OK");
-		return responseMsg;
-	    }
+	
+	if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))){
+	    log.warn("Could not find devices in uAAL because there is no one answering to the request");
+	    responseMsg.setPayload(new IoTDevicePayload(result));
+	    responseMsg.getMetadata().setStatus("OK");
+	    return responseMsg;
+	}else if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_TIMEOUT)) ||
+		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_FAIL)) ||
+		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_DENIED))){
 	    log.warn("Could not find devices in uAAL because there was an error");
 	    return error(msg);
 	}
+	
 	ResIterator roots = jena.listSubjectsWithProperty(RDF.type, URI_MULTI);
 	if (roots.hasNext()) { // Many responses aggregated into one
 	    Resource root = roots.next();
