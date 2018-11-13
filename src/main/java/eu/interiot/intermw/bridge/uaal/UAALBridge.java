@@ -495,7 +495,9 @@ public class UAALBridge extends AbstractBridge {
 	    metadata.initializeMetadata();
 	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
 	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
-	    //metadata.setConversationId(conversationId); 
+	    //metadata.setConversationId(conversationId);
+	    String conversationId = original.getMetadata().getConversationId().orElse(null);
+	    metadata.setConversationId(conversationId);
 //	    MessagePayload devicePayload = new MessagePayload(jena);
 	    MessagePayload devicePayload = new MessagePayload();
 	    deviceRegistryInitializeMessage.setMetadata(metadata);
@@ -516,6 +518,8 @@ public class UAALBridge extends AbstractBridge {
 	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_ADD_OR_UPDATE);
 	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
 	    //metadata.setConversationId(conversationId); 
+	    String conversationId = original.getMetadata().getConversationId().orElse(null);
+	    metadata.setConversationId(conversationId);
 	    MessagePayload devicePayload = new MessagePayload(jena);
 	    deviceAddMessage.setMetadata(metadata);
 	    deviceAddMessage.setPayload(devicePayload);
