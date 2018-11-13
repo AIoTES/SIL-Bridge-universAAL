@@ -454,6 +454,8 @@ public class UAALBridge extends AbstractBridge {
 	    return error(msg);
 	}
 	
+	deviceRegistryInitializeOld(msg, result);
+	
 	ResIterator roots = jena.listResourcesWithProperty(RDF.type, jena.getResource(URI_MULTI));
 	if (roots.hasNext()) { // Many responses aggregated into one RDF list. Values are in each "first"
 	    NodeIterator responses = jena.listObjectsOfProperty(RDF.first);
@@ -465,7 +467,9 @@ public class UAALBridge extends AbstractBridge {
 		String turtle = auxJena.listObjectsOfProperty(auxJena.getProperty(URI_PARAM))
 			.next().asLiteral().getString();
 		// The output is a serialized Device, add it to the result
+		result = ModelFactory.createDefaultModel();
 		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
+		deviceAddOld(msg, result);
 	    }
 	} else { // Only one response, no list, it is right in the model
 	    String turtle = jena.listObjectsOfProperty(jena.getProperty(URI_PARAM))
@@ -475,47 +479,67 @@ public class UAALBridge extends AbstractBridge {
 	}
 	
 //	responseMsg.setPayload(new IoTDevicePayload(result));
-//	responseMsg.getMetadata().setStatus("OK");
+	responseMsg.getMetadata().setStatus("OK");
 
 	log.info("Completed listDevices");
 
-	return deviceRegistryInitializeNew(msg, result);
-//	return responseMsg;
+//	return deviceRegistryInitializeOld(msg, result);
+	return responseMsg;
     }
     
-//    private Message deviceRegistryInitializeOld(Message original, Model jena) throws Exception{
-//	// Initialize device registry
-//	try{
-//	    Message deviceRegistryInitializeMessage = new Message();
-//	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
-//	    metadata.initializeMetadata();
-//	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
-//	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
-//	    //metadata.setConversationId(conversationId); 
+    private Message deviceRegistryInitializeOld(Message original, Model jena) throws Exception{
+	// Initialize device registry
+	try{
+	    Message deviceRegistryInitializeMessage = new Message();
+	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
+	    metadata.initializeMetadata();
+	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
+	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
+	    //metadata.setConversationId(conversationId); 
 //	    MessagePayload devicePayload = new MessagePayload(jena);
-//	    deviceRegistryInitializeMessage.setMetadata(metadata);
-//	    deviceRegistryInitializeMessage.setPayload(devicePayload);
-//	    publisher.publish(deviceRegistryInitializeMessage);
-//	    log.debug("Device_Registry_Initialize message has been published upstream.");
-//	    return ok(original);
-//	}catch(Exception ex){
-//	    return error(original);
-//	}
-//    }
-    
-    private Message deviceRegistryInitializeNew(Message original, Model jena){
-	Message responseMessage = this.createResponseMessage(original);
-	responseMessage.getMetadata().setMessageType(MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
-	responseMessage.getMetadata().addMessageType(MessageTypesEnum.RESPONSE);
-	try {
-	    MessagePayload mwMessagePayload = new MessagePayload(jena);
-	    responseMessage.setPayload(mwMessagePayload);
-	} catch (Exception e) {
-	    responseMessage.getMetadata().addMessageType(MessageTypesEnum.ERROR);
-	    responseMessage.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
+	    MessagePayload devicePayload = new MessagePayload();
+	    deviceRegistryInitializeMessage.setMetadata(metadata);
+	    deviceRegistryInitializeMessage.setPayload(devicePayload);
+	    publisher.publish(deviceRegistryInitializeMessage);
+	    log.debug("Device_Registry_Initialize message has been published upstream.");
+	    return ok(original);
+	}catch(Exception ex){
+	    return error(original);
 	}
-	return responseMessage;
     }
+    
+    private Message deviceAddOld(Message original, Model jena) throws Exception{
+	try{
+	    Message deviceAddMessage = new Message();
+	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
+	    metadata.initializeMetadata();
+	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_ADD_OR_UPDATE);
+	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
+	    //metadata.setConversationId(conversationId); 
+	    MessagePayload devicePayload = new MessagePayload(jena);
+	    deviceAddMessage.setMetadata(metadata);
+	    deviceAddMessage.setPayload(devicePayload);
+	    publisher.publish(deviceAddMessage);
+	    log.debug("Device_Add message has been published upstream.");
+	    return ok(original);
+	}catch(Exception ex){
+	    return error(original);
+	}
+    }
+    
+//    private Message deviceRegistryInitializeNew(Message original, Model jena){
+//	Message responseMessage = this.createResponseMessage(original);
+//	responseMessage.getMetadata().setMessageType(MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
+//	responseMessage.getMetadata().addMessageType(MessageTypesEnum.RESPONSE);
+//	try {
+//	    MessagePayload mwMessagePayload = new MessagePayload(jena);
+//	    responseMessage.setPayload(mwMessagePayload);
+//	} catch (Exception e) {
+//	    responseMessage.getMetadata().addMessageType(MessageTypesEnum.ERROR);
+//	    responseMessage.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
+//	}
+//	return responseMessage;
+//    }
 
     @Override
     public Message observe(Message msg) throws Exception {
