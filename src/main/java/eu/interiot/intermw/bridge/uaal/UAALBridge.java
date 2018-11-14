@@ -98,10 +98,14 @@ public class UAALBridge extends AbstractBridge {
 	super(config, platform);
 	log.debug("UniversAAL bridge is initializing...");
 	try {
-	    url = config.getProperty(PROPERTIES_PREFIX + "url");
-	    usr = config.getProperty(PROPERTIES_PREFIX + "user");
-	    pwd = config.getProperty(PROPERTIES_PREFIX + "password");
+	    url = platform.getBaseEndpoint().toString();
+	    if (Strings.isNullOrEmpty(url)) url = config.getProperty(PROPERTIES_PREFIX + "url");
+	    usr = platform.getUsername();
+	    if (Strings.isNullOrEmpty(usr)) usr = config.getProperty(PROPERTIES_PREFIX + "user");
+	    pwd = platform.getEncryptedPassword();
+	    if (Strings.isNullOrEmpty(pwd)) pwd = config.getProperty(PROPERTIES_PREFIX + "password");
 	    space = config.getProperty(PROPERTIES_PREFIX + "space");
+	    if (Strings.isNullOrEmpty(space)) space = "interiot";
 	    bridgeCallback_ID = "/"+encodePlatformId(platform.getPlatformId());
 	    bridgeCallback_CONTEXT = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_CONTEXT;
 	    bridgeCallback_DEVICE = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_DEVICE;
