@@ -414,22 +414,23 @@ public class UAALBridge extends AbstractBridge {
 	    if (roots.hasNext()) { // Many responses aggregated into one RDF list. Values are in each "first"
 		NodeIterator responses = jena.listObjectsOfProperty(RDF.first);
 		while (responses.hasNext()) {
-		    String response = responses.next().asLiteral().getLexicalForm();
+		    String response = responses.next().asLiteral().getLexicalForm(); //responses are serialized
 		    Model auxJena = ModelFactory.createDefaultModel();
 		    auxJena.read(new ByteArrayInputStream(response.getBytes()), null, "TURTLE");
 		    String turtle = auxJena.listObjectsOfProperty(auxJena.getProperty(URI_PARAM))
-			    .next().asLiteral().getString();
-		    result = ModelFactory.createDefaultModel();
-		    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
-		    deviceAddOld(msg, result);
+			    .next().asLiteral().getString();//Get the value from the response (also serialized)
+		    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");//Add to result
+//		    deviceAddOld(msg, result);
 		}
 	    } else { // Only one response, no list, it is right in the model
 		String turtle = jena.listObjectsOfProperty(jena.getProperty(URI_PARAM))
 			.next().asLiteral().getString();
-		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
+		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");//Add to result
 	    }
+	    MessagePayload responsePayload = new MessagePayload(result); //TODO IoTDevicePayload ?
+	    responseMsg.setPayload(responsePayload);
 	    responseMsg.getMetadata().setStatus("OK");
-	    log.info("Completed listDevices");
+	    log.info("Completed query");
 	    return responseMsg;
 	} else {
 	    for (Resource reqIoTDevice : reqIoTDevices) {
@@ -437,9 +438,8 @@ public class UAALBridge extends AbstractBridge {
 		String body = Body.CALL_GETDEVICE
 			.replace(Body.URI, reqIoTDevice.getURI())
 			.replace(Body.TYPE, URI_DEVICE);
-
-		String serviceResponse = UAALClient
-			.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
+		String serviceResponse = UAALClient.post(url + "spaces/" + space
+			+ "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
 		Model jena = ModelFactory.createDefaultModel();
 		Model result = ModelFactory.createDefaultModel();
 		jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");

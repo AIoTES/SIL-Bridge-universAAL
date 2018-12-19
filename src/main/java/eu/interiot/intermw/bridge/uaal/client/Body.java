@@ -3,7 +3,7 @@ package eu.interiot.intermw.bridge.uaal.client;
 public class Body {
     private final static String PREFIX = "http://ontology.universAAL.org/InterIoT.owl#";
     private final static String QUERYDEVICES = 
-	    "DESCRIBE ?d WHERE { ?d a <http://ontology.universaal.org/PhThing.owl#Device>}";
+	    "DESCRIBE ?d WHERE { ?d a <http://ontology.universAAL.org/PhThing.owl#Device>}";
     public static final String ID="$%i";
     public static final String CALLBACK="$%c";
     public static final String URI="$%s";
@@ -42,8 +42,8 @@ public class Body {
 	    + "  a :ContextProvider ;\\r\\n"
 	    + "  :hasType :controller .\\r\\n"
 	    + ":controller a :ContextProviderType .\\r\\n"
-	    + "<"+URI+"> a <http://ontology.universaal.org/PhThing.owl#Device>,"
-	    + " <http://ontology.universaal.org/PhThing.owl#PhysicalThing> .\"\r\n"
+	    + "<"+URI+"> a <http://ontology.universAAL.org/PhThing.owl#Device>,"
+	    + " <http://ontology.universAAL.org/PhThing.owl#PhysicalThing> .\"\r\n"
 	    + "  } \r\n"
 	    + " }";   
     public static final String CREATE_CALLEE_GET="{\r\n"
@@ -179,8 +179,8 @@ public class Body {
 	    + "      :hasValue <"+URI+"> ;\\r\\n"
 	    + "      :onProperty rdf:subject\\r\\n"
 	    + "    ] .\\r\\n"
-	    + "<"+URI+"> a <http://ontology.universaal.org/PhThing.owl#Device>,"
-	    + " <http://ontology.universaal.org/PhThing.owl#PhysicalThing> .\"\r\n"
+	    + "<"+URI+"> a <http://ontology.universAAL.org/PhThing.owl#Device>,"
+	    + " <http://ontology.universAAL.org/PhThing.owl#PhysicalThing> .\"\r\n"
 	    + "  }\r\n"
 	    + " }";    
     public static final String CALL_QUERY="@prefix ns: <http://www.daml.org/services/owl-s/1.1/Profile.owl#> ."
@@ -240,7 +240,7 @@ public class Body {
 	    + "	        a ns2:OutputBinding ;"
 	    + "	        ns2:toParam :output1 ;"
 	    + "	        ns2:valueForm \"\"\""
-	    + "	          @prefix : <http://ontology.universAAL.org/uAAL.owl#> ."
+	    + "	          @prefix : <http://ontology.universAAL.org/uAAL.owl#> ." //TODO WHY NOT Service.owl???
 	    + "	          _:BN000000 a :PropertyPath ;"
 	    + "	            :thePath ("
 	    + "	              <http://ontology.universAAL.org/PhThing.owl#controls>"
@@ -268,7 +268,7 @@ public class Body {
 	    + "	ns1:Device a owl:Class .";
     public static final String CALL_GETDEVICE=
 	    "@prefix ns: <http://www.daml.org/services/owl-s/1.1/Profile.owl#> ."
-	    + "prefix ns1: <http://ontology.universaal.org/PhThing.owl#> ."
+	    + "@prefix ns1: <http://ontology.universAAL.org/PhThing.owl#> ."
 	    + "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
 	    + "@prefix pvn: <http://ontology.universAAL.org/uAAL.owl#> ."
 	    + "@prefix ns2: <http://www.daml.org/services/owl-s/1.1/Process.owl#> ."
@@ -284,7 +284,7 @@ public class Body {
 	    + "          @prefix : <http://ontology.universAAL.org/Service.owl#> ."
 	    + "          _:BN000000 a :PropertyPath ;"
 	    + "            :thePath ("
-	    + "              <http://ontology.universaal.org/PhThing.owl#controls>"
+	    + "              <http://ontology.universAAL.org/PhThing.owl#controls>"
 	    + "            ) ."
 	    + "          \"\"\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral>"
 		    + "      ]"
