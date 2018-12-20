@@ -743,13 +743,14 @@ public class UAALBridge extends AbstractBridge {
 	    publisher.publish(messageForInterIoT);
 	    // TODO Get response from interiot ???
 	    log.debug("SERVICE CALLBACK -> After request. Msg:.... \n");
-	    String body = "";// TODO turn response into ServiceResponse ???
+	    String body = Body.RESP_FAILURE;// TODO turn response into ServiceResponse ???
 	    new Thread() { // TODO Pool?
+		Object lock = new Object();
 		public void run() {
 		    try {
-			wait(2500);
-			UAALClient.post(url+"spaces/"+space+"/service/callees/"+req.params(":deviceId")+"?o="+originalCall,
-				usr, pwd, TEXT, body);
+			lock.wait(2500); //Wait until the 200 is sent before posting this
+			UAALClient.post(url + "spaces/" + space	+ "/service/callees/" + req.params(":deviceId")
+				+ "?o=" + originalCall, usr, pwd, TEXT, body);
 		    } catch (Exception e) {
 			log.error("Error sending service response back to uAAL at registerServiceCallback1", e);
 		    }
@@ -781,13 +782,14 @@ public class UAALBridge extends AbstractBridge {
 	    publisher.publish(messageForInterIoT);
 	    // TODO Get response from interiot ???
 	    log.debug("SERVICE CALLBACK -> After request. Msg:.... \n");
-	    String body = "";// TODO turn response into ServiceResponse ???
+	    String body = Body.RESP_FAILURE;;// TODO turn response into ServiceResponse ???
 	    new Thread() { // TODO Pool?
+		Object lock = new Object();
 		public void run() {
 		    try {
-			wait(2500);
-			UAALClient.post(url+"spaces/"+space+"/service/callees/"+req.params(":deviceId")+"?o="+originalCall,
-				usr, pwd, JSON, body);
+			lock.wait(2500); //Wait until the 200 is sent before posting this
+			UAALClient.post(url + "spaces/" + space	+ "/service/callees/" + req.params(":deviceId")
+				+ "?o=" + originalCall, usr, pwd, JSON, body);
 		    } catch (Exception e) {
 			log.error("Error sending service response back to uAAL at registerServiceCallback2", e);
 		    }

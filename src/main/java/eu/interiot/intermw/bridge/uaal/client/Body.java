@@ -310,4 +310,9 @@ public class Body {
 	    + "    ns:has_process :serviceXProcess"
 	    + "  ] ;"
 	    + "  pvn:numberOfValueRestrictions \"1\"^^<http://www.w3.org/2001/XMLSchema#int> .";
+    public static final String RESP_FAILURE=
+	    "@prefix : <http://ontology.universAAL.org/uAAL.owl#> ."
+	    + "_:BN000000 a :ServiceResponse ;"
+	    + "  :callStatus :service_specific_failure ."
+	    + ":service_specific_failure a :CallStatus .";
 }
