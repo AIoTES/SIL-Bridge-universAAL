@@ -35,6 +35,7 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.NodeIterator;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.vocabulary.RDF;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -208,7 +209,7 @@ public class UAALBridge extends AbstractBridge {
 	
 //	validCallback_CONTEXT.add(conversationId);
 	for (Resource device : getDevices(msg.getPayload())) {
-	    deviceURI=device.getURI();
+	    deviceURI=injectHash(device.getURI());
 	    if(!init){
 		body = Body.CREATE_SUBSCRIBER
 			.replace(Body.ID, getSuffix(deviceURI))
@@ -233,7 +234,7 @@ public class UAALBridge extends AbstractBridge {
 
 //	validCallback_CONTEXT.remove(conversationId);	
 	for (Resource device : getDevices(msg.getPayload())) { 
-	    UAALClient.delete(url + "spaces/" + space + "/context/subscribers/" + getSuffix(device.getURI()), usr, pwd);
+	    UAALClient.delete(url + "spaces/" + space + "/context/subscribers/" + getSuffix(injectHash(device.getURI())), usr, pwd);
 	}
 
 	log.info("Completed unsubscribe");
@@ -280,7 +281,7 @@ public class UAALBridge extends AbstractBridge {
 	String deviceURI, deviceType, deviceValueType, bodyS1, bodyS2, bodyC;
 
 	for (Resource device : getDevices(msg.getPayload())) { 
-	    deviceURI = device.getURI();
+	    deviceURI = injectHash(device.getURI());
 	    deviceType = getSpecializedType(device);
 	    deviceValueType = getValueType(deviceType);
 	    bodyS1 = Body.CREATE_CALLEE_GET
@@ -324,7 +325,7 @@ public class UAALBridge extends AbstractBridge {
 	String deviceURI, deviceType, deviceValueType, bodyS1, bodyS2, bodyC;
 
 	for (Resource device : getDevices(msg.getPayload())) { 
-	    deviceURI = device.getURI();
+	    deviceURI = injectHash(device.getURI());
 	    deviceType = getSpecializedType(device);
 	    deviceValueType = getValueType(deviceType);
 	    bodyS1=Body.CREATE_CALLEE_GET
@@ -361,7 +362,7 @@ public class UAALBridge extends AbstractBridge {
 	log.debug("Entering platformDeleteDevice\n"+msg.serializeToJSONLD());
 
 	for (Resource device : getDevices(msg.getPayload())) { 
-	    String deviceURI=device.getURI();
+	    String deviceURI=injectHash(device.getURI());
 //	    validCallback_DEVICE.remove(getSuffix(deviceURI));
 //	    validCallback_VALUE.remove(getSuffix(deviceURI));
 	    UAALClient.delete(url+"spaces/"+space+"/service/callees/"+getSuffixCalleeGET(deviceURI), usr, pwd);
@@ -436,7 +437,7 @@ public class UAALBridge extends AbstractBridge {
 	    for (Resource reqIoTDevice : reqIoTDevices) {
 		// Many devices per call? According to docs, no, so just do this with the first one
 		String body = Body.CALL_GETDEVICE
-			.replace(Body.URI, reqIoTDevice.getURI())
+			.replace(Body.URI, injectHash(reqIoTDevice.getURI()))
 			.replace(Body.TYPE, URI_DEVICE);
 		String serviceResponse = UAALClient.post(url + "spaces/" + space
 			+ "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
@@ -602,7 +603,7 @@ public class UAALBridge extends AbstractBridge {
 	log.debug("Entering observe\n"+msg.serializeToJSONLD());
 	
 	Model event = msg.getPayload().getJenaModel();
-	String deviceURI = event.listObjectsOfProperty(RDF.subject).next().asResource().getURI();
+	String deviceURI = injectHash(event.listObjectsOfProperty(RDF.subject).next().asResource().getURI());
 	String eventURI = event.listStatements(null, RDF.type, event.getResource(URI_EVENT)).nextStatement().getSubject().getURI();
 	Writer turtle = new StringWriter();
 	event.removeAll(event.getResource(eventURI), event.getProperty(URI_PROVIDER), null)
@@ -817,12 +818,25 @@ public class UAALBridge extends AbstractBridge {
 	// TODO Auto-generated method stub: Get type of hasValue property for a given device type
 	if (deviceType.equals("http://ontology.universAAL.org/Device.owl#TemperatureSensor"))
 	    return "http://www.w3.org/2001/XMLSchema#float";
+	else if (deviceType.equals("http://ontology.universaal.inter-iot.eu/Train#PresenceSensor"))
+	    return "http://ontology.universAAL.org/Device.owl#StatusValue";
+	else if (deviceType.equals("http://ontology.universaal.inter-iot.eu/Train#TurnoutActuator"))
+	    return "http://ontology.universaal.inter-iot.eu/Train#TurnoutState";
 	
 	return "http://www.w3.org/2001/XMLSchema#float";
     }
 
     private String getSpecializedType(Resource device) {
 	try{
+	    StmtIterator types = device.listProperties(RDF.type);
+	    while (types.hasNext()){
+		String t = types.next().getResource().getURI();
+		if (t.equals("http://ontology.universAAL.org/Device.owl#TemperatureSensor")
+			|| t.equals("http://ontology.universaal.inter-iot.eu/Train#PresenceSensor")
+			|| t.equals("http://ontology.universaal.inter-iot.eu/Train#TurnoutActuator")) {
+		    return t;
+		}
+	    }
 	    //TODO Extract device most specialized RDF Type !!!
 	}catch(Exception ex){
 	    log.warn("Error extracting most specialized Device type. Using generic uAAL ValueDevice", ex);
@@ -887,4 +901,16 @@ public class UAALBridge extends AbstractBridge {
 //	return responseMsg;
 //    }
 
+    private String injectHash(String uri){
+	if(uri.contains("#")){ // something.owl#thing
+	    return uri; // > something.owl#thing
+	}else{
+	    int index = uri.lastIndexOf("/");
+	    if(index<0){ // somethingthing
+		return "http://inter-iot.eu/default.owl#"+uri; // > ...owl#somethingthing
+	    }else{ // something/thing
+		return uri.substring(0, index+1)+"default.owl#"+uri.substring(index+1); 
+	    } // > something/default.owl#thing
+	}
+    }
 }
