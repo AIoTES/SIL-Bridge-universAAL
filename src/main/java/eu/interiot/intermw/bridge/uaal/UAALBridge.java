@@ -184,9 +184,36 @@ public class UAALBridge extends AbstractBridge {
     }
     
     @Override
-    public Message updatePlatform(Message arg0) throws Exception {
-	// TODO Auto-generated method stub
-	return null;
+    public Message updatePlatform(Message msg) throws Exception {
+	/*
+	 * Update a Space in universAAL REST API for INTER-IoT as a user.
+	 * This only updates the associated properties of the Space, nothing else.
+	 */
+
+	// TODO This assumes that any changes to the callback URL have 
+	// been performed at AbstractBridge. Otherwise everything remains the same.
+
+	log.info("Entering updatePlatform");
+	/*
+	bridgeCallback_ID = "/"+encodePlatformId(platform.getPlatformId());
+	bridgeCallback_CONTEXT = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_CONTEXT;
+	bridgeCallback_DEVICE = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_DEVICE;
+	bridgeCallback_VALUE = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_VALUE;
+
+	String bodySpace = Body.CREATE_SPACE
+		.replace(Body.ID, space)
+		.replace(Body.CALLBACK, bridgeCallbackUrl.toString());
+
+	UAALClient.put(url + "spaces", usr, pwd, JSON, bodySpace);
+
+	// Re-Register the Spark callback servlets, in the new callback URL (previous ones cannot be removed)
+	registerCallback_CONTEXT();
+	registerCallback_DEVICE();
+	registerCallback_VALUE();
+	*/
+	log.info("Completed updatePlatform");
+
+	return ok(msg);
     }
 
     // ------------------------------------------
