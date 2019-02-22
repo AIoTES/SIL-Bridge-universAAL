@@ -72,6 +72,7 @@ public class UAALBridge extends AbstractBridge {
     private static final String URI_PARAM = "http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue";
     private static final String URI_OUTPUT = "http://ontology.universAAL.org/InterIoT.owl#output1";
     private static final String URI_EVENT = "http://ontology.universAAL.org/Context.owl#ContextEvent";
+    private static final String URI_REQUEST = "http://ontology.universAAL.org/uAAL.owl#ServiceRequest";
     private static final String URI_PROVIDER = "http://ontology.universAAL.org/Context.owl#hasProvider";
     private static final String URI_STATUS = "http://ontology.universAAL.org/uAAL.owl#callStatus";
 //    private static final String URI_SUCCEEDED = "http://ontology.universAAL.org/uAAL.owl#call_succeeded";
@@ -667,7 +668,10 @@ public class UAALBridge extends AbstractBridge {
 	String body = turtle.toString(); // TODO Check this way to get request works
 	turtle.close();
 
-	UAALClient.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
+	//TODO PATCH This is to temporarily solve the issue of uAAL serializing only the object in the first line
+	String firstLine = "_:BN000000 <" + RDF.type.toString() + "> <" + URI_REQUEST + "> . \n";
+
+	UAALClient.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, firstLine+body);
 
 	log.info("Completed actuate");
 
