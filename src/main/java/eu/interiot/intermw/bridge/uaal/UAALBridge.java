@@ -21,624 +21,927 @@
  */
 package eu.interiot.intermw.bridge.uaal;
 
-import com.google.common.base.Strings;
-import eu.interiot.intermw.bridge.abstracts.AbstractBridge;
-import eu.interiot.intermw.bridge.exceptions.BridgeException;
-import eu.interiot.intermw.bridge.uaal.client.Body;
-import eu.interiot.intermw.bridge.uaal.client.UAALClient;
-import eu.interiot.intermw.comm.broker.exceptions.BrokerException;
-import eu.interiot.intermw.commons.exceptions.MiddlewareException;
-import eu.interiot.intermw.commons.exceptions.UnknownActionException;
-import eu.interiot.intermw.commons.exceptions.UnsupportedActionException;
-import eu.interiot.intermw.commons.interfaces.Configuration;
-import eu.interiot.intermw.commons.model.Platform;
-import eu.interiot.intermw.commons.model.SubscriptionId;
-import eu.interiot.message.EntityID;
-import eu.interiot.message.Message;
-import eu.interiot.message.MessageMetadata;
-import eu.interiot.message.MessagePayload;
-import eu.interiot.message.URI.URIManagerMessageMetadata;
-import eu.interiot.message.exceptions.MessageException;
-import eu.interiot.message.exceptions.payload.PayloadException;
-import eu.interiot.message.metaTypes.PlatformMessageMetadata;
-import eu.interiot.message.utils.INTERMWDemoUtils;
-import org.apache.jena.rdf.model.*;
+import static spark.Spark.post;
+
+import java.io.ByteArrayInputStream;
+import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
+import java.io.Writer;
+import java.net.URLEncoder;
+import java.util.List;
+
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.NodeIterator;
+import org.apache.jena.rdf.model.ResIterator;
+import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.vocabulary.RDF;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
-import java.util.Random;
-import java.util.Set;
+import com.google.common.base.Strings;
 
-import static spark.Spark.post;
+import eu.interiot.intermw.bridge.BridgeConfiguration;
+import eu.interiot.intermw.bridge.abstracts.AbstractBridge;
+import eu.interiot.intermw.bridge.uaal.client.Body;
+import eu.interiot.intermw.bridge.uaal.client.UAALClient;
+import eu.interiot.intermw.comm.broker.exceptions.BrokerException;
+import eu.interiot.intermw.commons.exceptions.MiddlewareException;
+import eu.interiot.intermw.commons.model.Platform;
+import eu.interiot.message.Message;
+import eu.interiot.message.MessageMetadata;
+import eu.interiot.message.MessagePayload;
+import eu.interiot.message.ID.EntityID;
+import eu.interiot.message.managers.URI.URIManagerMessageMetadata;
+import eu.interiot.message.managers.URI.URIManagerMessageMetadata.MessageTypesEnum;
+import eu.interiot.message.metadata.PlatformMessageMetadata;
+import eu.interiot.message.payload.types.IoTDevicePayload;
 
-@eu.interiot.intermw.bridge.annotations.Bridge(platformType = "UniversAAL")
+@eu.interiot.intermw.bridge.annotations.Bridge(platformType = "http://inter-iot.eu/UniversAAL")
 public class UAALBridge extends AbstractBridge {
-    private final Logger log = LoggerFactory.getLogger(UAALBridge.class);
-    private final static String PROPERTIES_PREFIX = "uaal-";
-
+    private final static String PROPERTIES_PREFIX = "universaal-";
+    private final static String DEFAULT_CALLER = "default";
     private final static String JSON = "application/json";
     private final static String TEXT = "text/plain";
-    private final static String UAAL_URI_PREFIX = "http://ontology.universAAL.org/InterIoT.owl#";
-    //    private final static String INTERIOT_URI_THING_PREFIX = "http://inter-iot.eu/dev/";
-//    private final static String INTERIOT_URI_OBS_PREFIX = "http:inter-iot.eu/obs/";
-//    private final static String DEMO_THING_ID = "scale"; 
-    private final static String SINGLE_CALLER = "default";
-//    private final static String DEMO_SINGLE_SUBSCRIBER = "default"; 
+    private final static String PATH_CONTEXT = "/uaal/context/";
+    private final static String PATH_DEVICE = "/uaal/device/";
+    private final static String PATH_VALUE = "/uaal/value/";
+//    private static final String URI_RETURNS = "http://ontology.universAAL.org/uAAL.owl#returns";
+    private static final String URI_MULTI = "http://ontology.universAAL.org/uAAL.owl#MultiServiceResponse";
+    private static final String URI_PARAM = "http://www.daml.org/services/owl-s/1.1/Process.owl#parameterValue";
+    private static final String URI_OUTPUT = "http://ontology.universAAL.org/InterIoT.owl#output1";
+    private static final String URI_EVENT = "http://ontology.universAAL.org/Context.owl#ContextEvent";
+    private static final String URI_REQUEST = "http://ontology.universAAL.org/uAAL.owl#ServiceRequest";
+    private static final String URI_PROVIDER = "http://ontology.universAAL.org/Context.owl#hasProvider";
+    private static final String URI_STATUS = "http://ontology.universAAL.org/uAAL.owl#callStatus";
+//    private static final String URI_SUCCEEDED = "http://ontology.universAAL.org/uAAL.owl#call_succeeded";
+    private static final String URI_TIMEOUT = "http://ontology.universAAL.org/uAAL.owl#response_timed_out";
+    private static final String URI_FAIL = "http://ontology.universAAL.org/uAAL.owl#service_specific_failure";
+    private static final String URI_DENIED = "http://ontology.universAAL.org/uAAL.owl#denied";
+    private static final String URI_NOMATCH = "http://ontology.universAAL.org/uAAL.owl#no_matching_service_found";
+    private static final String URI_DEVICE = "http://ontology.universaal.org/PhThing.owl#Device";
+    private final Logger log = LoggerFactory.getLogger(UAALBridge.class);
+    private String url;
+    private String usr;
+    private String pwd;
+    private String space;
+    private String bridgeCallback_ID;
+    private String bridgeCallback_CONTEXT;
+    private String bridgeCallback_DEVICE;
+    private String bridgeCallback_VALUE;
+    // These are to keep track of which callbacks Spark must listen, and which must 404
+    // TODO Temporarily disabled because devices apparently are not re-created/subscribed at restart
+//    private HashSet<String> validCallback_CONTEXT =new HashSet<String>();
+//    private HashSet<String> validCallback_DEVICE =new HashSet<String>();
+//    private HashSet<String> validCallback_VALUE =new HashSet<String>();
 
-    private final static String KEY_URL = "url";
-    private final static String KEY_USR = "usr";
-    private final static String KEY_PWD = "pwd";
-    private final static String KEY_CALLBACK_HOST = "callback-url";
-    private final static String KEY_SPACE = "space";
+    public UAALBridge(BridgeConfiguration config, Platform platform) throws MiddlewareException {
+	super(config, platform);
+	log.debug("UniversAAL bridge is initializing...");
+	try {
+	    url = platform.getBaseEndpoint().toString();
+	    if (Strings.isNullOrEmpty(url)) url = config.getProperty(PROPERTIES_PREFIX + "url");
+	    usr = platform.getUsername();
+	    if (Strings.isNullOrEmpty(usr)) usr = config.getProperty(PROPERTIES_PREFIX + "user");
+	    pwd = platform.getEncryptedPassword();
+	    if (Strings.isNullOrEmpty(pwd)) pwd = config.getProperty(PROPERTIES_PREFIX + "password");
+	    space = config.getProperty(PROPERTIES_PREFIX + "space");
+	    if (Strings.isNullOrEmpty(space)) space = "interiot";
+	    bridgeCallback_ID = "/"+encodePlatformId(platform.getPlatformId());
+	    bridgeCallback_CONTEXT = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_CONTEXT;
+	    bridgeCallback_DEVICE = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_DEVICE;
+	    bridgeCallback_VALUE = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_VALUE;
+	} catch (Exception e) {
+	    throw new MiddlewareException(
+		    "Failed to read UAALBridge configuration: "
+			    + e.getMessage());
+	}
+	if (Strings.isNullOrEmpty(url) 
+		|| Strings.isNullOrEmpty(usr)
+		|| Strings.isNullOrEmpty(pwd)
+		|| Strings.isNullOrEmpty(space)){
+	    throw new MiddlewareException(
+		    "Invalid UAALBridge configuration: empty or invalid values.");
+	}
+	if (!url.endsWith("/")) url = url + "/"; // Just in case
 
-    private final static String CALLBACK_PATH = "/receiver/";
-    private final static String CALLBACK_CONTEXT_PATH = "/receiver/context/";
-    //    private final static String CALLBACK_SERVICE_PATH = "/receiver/service/";
-
-    //private Publisher<Message> publisher;
-    //private Broker broker;
-    //private MwFactory mwFactory;
-
-    private String prop_URL;
-    private String prop_USR;
-    private String prop_PWD;
-    private String prop_CALLBACK_HOST;
-    private String prop_SPACE;
-    private int callbackPort;
-
-    // TODO Try to handle internally as many Exceptions as possible
-    public UAALBridge(Configuration configuration, Platform platform) throws MiddlewareException {
-        super(configuration, platform);
-        log.debug("UAALBridge is initializing...");
-//	Properties properties = configuration.getProperties(PROPERTIES_PREFIX);
-        // @see OrionBridge for an example of a bridge for FIWARE
-
-        // There is a usage example in the project: example.interiot.consumer
-        // To make use of the OM2MBridge you have to change this line
-        // interiot.addPlatform(myPlatformId, null, PlatformType.FIWARE);
-        // To this
-        // interiot.addPlatform(myPlatformId, null, PlatformType.ONEM2M);
-        // bridge configuration can be set in example.bridge.properties file
-
-        // TODO commons context and broker context. This is very confusing
-        //mwFactory = Context.mwFactory();
-        //broker = eu.interiot.intermw.comm.broker.Context.getBroker();
-
-        // Initialize uAAL Context
-//	prop_URL=platform.getBaseURL();
-//	if(prop_URL==null || prop_URL.isEmpty()){
-//	    prop_URL = properties.getProperty(KEY_URL, DEFAULT_URL);
-//	}
-//	if(!prop_URL.endsWith("/uaal/")){
-//	    prop_URL=prop_URL+"/uaal/";
-//	}
-//	prop_USR = properties.getProperty(KEY_USR, DEFAULT_USR);
-//	prop_PWD = properties.getProperty(KEY_PWD, DEFAULT_PWD);
-//	prop_CALLBACK_HOST = properties.getProperty(KEY_CALLBACK_HOST, DEFAULT_CALLBACK_HOST);
-//	prop_SPACE = properties.getProperty(KEY_SPACE, DEFAULT_SPACE);
-        // DEMO
-
-        try {
-            prop_URL = configuration.getProperty("universaal.url");
-            prop_USR = configuration.getProperty("universaal.user");
-            prop_PWD = configuration.getProperty("universaal.password");
-            prop_SPACE = configuration.getProperty("universaal.space");
-            prop_CALLBACK_HOST = configuration.getProperty("bridge-callback-host");
-            callbackPort = Integer.parseInt(configuration.getProperty("bridge-callback-port"));
-        } catch (Exception e) {
-            throw new MiddlewareException("Failed to read UAALBridge configuration: " + e.getMessage());
-        }
-
-        if (Strings.isNullOrEmpty(prop_URL) || Strings.isNullOrEmpty(prop_USR) || Strings.isNullOrEmpty(prop_PWD) ||
-                Strings.isNullOrEmpty(prop_SPACE) || Strings.isNullOrEmpty(prop_CALLBACK_HOST)) {
-            throw new MiddlewareException("Invalid UAALBridge configuration: empty values.");
-        }
-
-        log.debug("UAALBridge has been initialized successfully.");
+	log.info("UniversAAL bridge has been initialized successfully.");
     }
 
-    private void registerPlatform(boolean SYS_INIT) {
-        log.debug("registerPlatform");
-        String body = Body.POST_SPACES
-                .replace(Body.REPLACE_SPACE, prop_SPACE)
-                .replace(Body.REPLACE_HOST, prop_CALLBACK_HOST)
-                .replace(Body.REPLACE_PORT, Integer.toString(callbackPort))
-                .replace(Body.REPLACE_PATH, CALLBACK_PATH);
+    // ------------------------------------------
 
-        // Default SCaller
-        String bodyD = Body.POST_SPACES_S_SERVICE_CALLERS
-                .replace(Body.REPLACE_CALLER, SINGLE_CALLER);
-
-        if (!SYS_INIT) {
-            try {
-                System.out.println("CREATING CONNECTION TO UAAL: " + prop_URL + "spaces/" + prop_USR + prop_PWD);
-                log.debug("CREATING CONNECTION TO UAAL: " + prop_URL + "spaces/" + prop_USR + prop_PWD);
-                UAALClient.post(prop_URL + "spaces/", prop_USR, prop_PWD, JSON, body);
-                UAALClient.post(prop_URL + "spaces/" + prop_SPACE + "/service/callers/", prop_USR, prop_PWD, JSON, bodyD);
-            } catch (Exception e) {
-                log.error("registerPlatform " + e);
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void create(String thingID, Message message, boolean SYS_INIT) throws BridgeException {
-        log.debug("create");
-        // Replicate a thing from another platform into uAAL
-        //
-        // Create a Device mydevice here that acts like a LDDI Exporter, with:
-        //
-        // SCallee
-        //   DeviceService>controls>mydevice[GET]
-        //     Return the current instance of mydevice
-        //   DeviceService>controls>mydevice[CHANGE(mydevice*)]
-        //     Changes current instance with the same instance with different props values
-        //   DeviceService>controls>mydevice[REMOVE] ?
-        //     Removes current instance? Notify INTER-IoT subscribers? Remove self?
-        //
-        // CPublisher
-        //   CEP[sub=mydev, pred=*, obj=*]
-        //     Publisher to be used by update(String thingId, Message message)
-
-        // The Publisher: A controller that can publish anything about this thing
-        // DEMO: Not the best way to do it, but it will be replaced by IPSM later anyway...
-        String bodyC;
-        Resource entity = message.getPayload().getJenaModel().getResource(thingID);
-        if (entity.hasProperty(RDF.type, "http://ontology.universaal.org/PersonalHealthDevice.owl#WeighingScale")) {
-            log.debug("weight scale");
-            bodyC = Body.POST_SPACES_S_CONTEXT_PUBLISHERS_2
-                    .replace(Body.REPLACE_ID, getInteriotSuffix(thingID))
-                    .replace(Body.REPLACE_TYPE, "http://ontology.universaal.org/PersonalHealthDevice.owl#WeighingScale")
-                    .replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX);
-        } else if (entity.hasProperty(RDF.type, "http://ontology.universAAL.org/PersonalHealthDevice.owl#BloodPressureSensor")) {
-            log.debug("blood presure");
-            bodyC = Body.POST_SPACES_S_CONTEXT_PUBLISHERS_2
-                    .replace(Body.REPLACE_ID, getInteriotSuffix(thingID))
-                    .replace(Body.REPLACE_TYPE, "http://ontology.universAAL.org/PersonalHealthDevice.owl#BloodPressureSensor")
-                    .replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX);
-        } else {
-            log.debug("generic device");
-            bodyC = Body.POST_SPACES_S_CONTEXT_PUBLISHERS
-                    .replace(Body.REPLACE_ID, getInteriotSuffix(thingID))
-                    .replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX);
-        }
-
-        // The Callee profiles: for GET, CHANGE (and REMOVE?)
-//	String bodyS=Body.POST_SPACES_S_SERVICE_CALLEES
-//		.replace(Body.REPLACE_ID, demoSuffixInteriot(thing.getThingId().getId()))
-//		.replace(Body.REPLACE_HOST, prop_CALLBACK_HOST)
-//		.replace(Body.REPLACE_PORT, prop_CALLBACK_PORT)
-//		.replace(Body.REPLACE_PATH_S, CALLBACK_SERVICE_PATH)
-//		.replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX);
-        // TODO When a call is requested from uaal, uAAL REST will send it to CALLBACK_SERVICE....
-        // Create here a RESTlet on that URL with Spark, and whenever a call arrives,
-        // build a Message with a Query and push it to InterIoT (?). Post the response back to uAAL
-
-        try {
-            log.debug("Posting to uaal " + prop_URL + "spaces/" + prop_SPACE + "/context/publishers/");
-            if (!SYS_INIT) {
-                UAALClient.post(prop_URL + "spaces/" + prop_SPACE + "/context/publishers/", prop_USR, prop_PWD, JSON, bodyC);
-            }
-//	    UAALClient.post(prop_URL+"spaces/"+prop_SPACE+"/service/callees/", prop_USR, prop_PWD, JSON, bodyS);
-        } catch (Exception e) {
-            log.error("create" + e);
-            throw new BridgeException(e);
-        }
-    }
-
-//    public String read() throws BridgeException {
-//	// Create a ServiceRequest asking for the equivalent query(?) from a DefaultServiceCaller
-//	// SCaller
-//	//   DeviceService>controls>URI=query.getEntityID + MY_URI=query.getType
-//	//
-//	// Return a parsed Thing from the returned Device instance
-//	
-//	// DEMO This method may never be called in the demo: There will be no discovery, 
-//	// all the things referred to in all methods will have an ID that was given to them "manually"
-//	// Even if used, I can't get any attributes from thing, other than ID, so the only meaningful 
-//	// query I could build would be "get me device with ID", which is a bit of a problem right now in uAAL.
-//	
-////	if (query.getEntityId()!=null && !query.getEntityId().isEmpty()){
-////	    //Request services that return this thing
-////	}else if(query.getType()!=null && !query.getType().isEmpty()){
-//	    //Request services that return things of type Device
-//	    String body=Body.POST_SPACES_S_SERVICE_CALLERS_C
-//		    .replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX);
-//	    
-//		try {
-//		    String result=UAALClient.post(prop_URL+"spaces/"+prop_SPACE+"/service/callers/"+DEMO_SINGLE_CALLER, prop_USR, prop_PWD, TEXT, body);
-//		    if (result!=null){
-//			// TODO Parse and convert to thing
-//			// DEMO Again, since I cannot set attributes to Thing, the Thing to return will 
-//			// only have to contain one meaningful property: ID
-//			return INTERIOT_URI_THING_PREFIX+DEMO_THING_ID;
-//		    }else{
-//			return null;
-//		    }
-//		} catch (Exception e) {
-//		    throw new BridgeException(e);
-//		}
-////	}
-//    }
-
-    private void update(String thingId, Message message) throws BridgeException {
-        log.debug("update");
-        // Modify the status of a thing from another platform and notify uAAL
-        //
-        // Modify the Device mydevice that will be handled by the Callee, publish the change as event
-        //
-        // DEMO: Not the best way to do it, but it will be replaced by IPSM later anyway...
-        String body = "";
-        String uuid = Integer.toHexString(new Random(System.currentTimeMillis()).nextInt());
-        Resource entity = message.getPayload().getJenaModel().getResource(thingId);
-        if (entity.hasProperty(RDF.type, "http://ontology.universaal.org/PersonalHealthDevice.owl#WeighingScale")) {
-            log.debug("weight scale");
-            Property prop = message.getPayload().getJenaModel().getProperty("http://inter-iot.eu/GOIoTP#hasValue");
-            NodeIterator list = message.getPayload().getJenaModel().listObjectsOfProperty(prop);
-            if (list.hasNext()) {
-                RDFNode o = list.next();
-                body = Body.POST_SPACES_S_CONTEXT_PUBLISHERS_P_W
-                        .replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX)
-                        .replace(Body.REPLACE_ID, getInteriotSuffix(thingId))
-                        .replace(Body.REPLACE_TIME, "" + System.currentTimeMillis())
-                        .replace(Body.REPLACE_UUID, uuid)
-                        .replace(Body.REPLACE_OBJ, o.asLiteral().getLexicalForm());
-            }
-        } else if (entity.hasProperty(RDF.type, "http://ontology.universAAL.org/PersonalHealthDevice.owl#BloodPressureSensor")) {
-            log.debug("blood pressure (disabled)");
-//		Property prop = message.getPayload().getJenaModel().getProperty("http://inter-iot.eu/GOIoTP#hasValue");
-//		NodeIterator list = message.getPayload().getJenaModel().listObjectsOfProperty(prop);
-//		if(list.hasNext()){
-//		    RDFNode o = list.next();
-//		    body=Body.POST_SPACES_S_CONTEXT_PUBLISHERS_P_BP
-//			.replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX)
-//			.replace(Body.REPLACE_ID, getInteriotSuffix(thingId))
-//			.replace(Body.REPLACE_TIME, ""+System.currentTimeMillis())
-//			.replace(Body.REPLACE_UUID, uuid)
-//			.replace(Body.REPLACE_OBJ, o.asLiteral().getLexicalForm())
-//			.replace(Body.REPLACE_OBJ_2, o.asLiteral().getLexicalForm());
-//		}
-        } else {
-            log.debug("generic device");
-            Property prop = message.getPayload().getJenaModel().getProperty("http://inter-iot.eu/GOIoTP#hasValue");
-            NodeIterator list = message.getPayload().getJenaModel().listObjectsOfProperty(prop);
-            if (list.hasNext()) {
-                RDFNode o = list.next();
-                if (o.isLiteral()) {
-                    log.debug("literal");
-                    body = Body.POST_SPACES_S_CONTEXT_PUBLISHERS_P_D
-                            .replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX)
-                            .replace(Body.REPLACE_ID, getInteriotSuffix(thingId))
-                            .replace(Body.REPLACE_TIME, "" + System.currentTimeMillis())
-                            .replace(Body.REPLACE_UUID, uuid)
-                            .replace(Body.REPLACE_OBJ, "\"" + o.asLiteral().getLexicalForm() + "\"^^" + o.asLiteral().getDatatypeURI());
-                } else {
-                    log.debug("value");
-                    body = Body.POST_SPACES_S_CONTEXT_PUBLISHERS_P_D
-                            .replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX)
-                            .replace(Body.REPLACE_ID, getInteriotSuffix(thingId))
-                            .replace(Body.REPLACE_TIME, "" + System.currentTimeMillis())
-                            .replace(Body.REPLACE_UUID, uuid)
-                            .replace(Body.REPLACE_OBJ, o.asResource().getURI())
-                            .replace(Body.REPLACE_TYPE_OBJ, message.getPayload().getJenaModel().getProperty(o.asResource(), RDF.type).getObject().asResource().getURI());
-                }
-            }
-        }
-        try {
-            if (!body.isEmpty()) {
-                log.debug("Posting to uaal " + prop_URL + "spaces/" + prop_SPACE + "/context/publishers/" + getInteriotSuffix(thingId));
-                UAALClient.post(prop_URL + "spaces/" + prop_SPACE + "/context/publishers/" + getInteriotSuffix(thingId), prop_USR, prop_PWD, TEXT, body);
-            }
-        } catch (Exception e) {
-            log.error("update " + e);
-            throw new BridgeException(e);
-        }
-    }
-
-    public void delete(String thingId) throws BridgeException {
-        log.debug("delete");
-        // Remove the Device mydevice that was created in create(String thingID, String thingType)
-
-        try {
-            log.debug("Posting to uaal " + prop_URL + "spaces/" + prop_SPACE + "/context/publishers/" + getInteriotSuffix(thingId));
-            UAALClient.delete(prop_URL + "spaces/" + prop_SPACE + "/context/publishers/" + getInteriotSuffix(thingId), prop_USR, prop_PWD);
-//	    UAALClient.delete(prop_URL+"spaces/"+prop_SPACE+"/service/callees/"+getInteriotSuffix(thingId), prop_USR, prop_PWD);
-        } catch (Exception e) {
-            log.error("delete " + e);
-            throw new BridgeException(e);
-        }
-    }
-
-    private void subscribe(String thingId, String conversationId, boolean SYS_INIT)
-            throws BridgeException {
-        log.debug("subscribe");
-        // Subscribe to changes from a thing in uAAL and forward them to other platforms
-        //
-        // Create a CSubscriber for this thing
-        //
-        // CSubscriber
-        //   CEP[sub=thing.getThingID, pred=*, obj=*]
-
-        // ConversationId IS NOT SubscriptionId. It appears I have to build the SubscriptionId
-        // and return it somehow TBD. ConversationId could perhaps be more akin to a ContextProvider URI...
-
-        // The Subscriber: Receive anything about this device
-        String body = Body.POST_SPACES_S_CONTEXT_SUBSCRIBERS_1
-                .replace(Body.REPLACE_SUBSCRIBER, conversationId)
-                .replace(Body.REPLACE_HOST, prop_CALLBACK_HOST)
-                .replace(Body.REPLACE_PORT, Integer.toString(callbackPort))
-                .replace(Body.REPLACE_PATH_C, CALLBACK_CONTEXT_PATH)
-                .replace(Body.REPLACE_ID, getInteriotSuffix(thingId))
-                .replace(Body.REPLACE_PREFIX, UAAL_URI_PREFIX);
-
-        try {
-            registerContextCallback(conversationId);
-            log.debug("Posting to uaal" + prop_URL + "spaces/" + prop_SPACE + "/context/subscribers/");
-            if (!SYS_INIT) {
-                UAALClient.post(prop_URL + "spaces/" + prop_SPACE + "/context/subscribers/", prop_USR, prop_PWD, JSON, body);
-            }
-        } catch (Exception e) {
-            log.error("subscribe " + e);
-            throw new BridgeException(e);
-        }
-    }
-
-//    private void subscribeById(String conversationId,
-//	    String... thingIds) throws BridgeException {
-//	// No idea what it does, it depends on ConverstaionID and it is not clear
-//	//
-//	// For now just batch call subscribe(String thingId, String conversationId)
-//	for(String t:thingIds){
-//	    subscribe(t, conversationId);
-//	}
-//    }
-
-    private void unsubscribe(SubscriptionId subscriptionId) throws BridgeException {
-        log.debug("unsubscribe");
-        // Remove the CSubscriber created in subscribe
-
-        try {
-            log.debug("Posting to uaal " + prop_URL + "spaces/" + prop_SPACE + "/context/subscribers/" + subscriptionId.getId());
-            UAALClient.delete(prop_URL + "spaces/" + prop_SPACE + "/context/subscribers/" + subscriptionId.getId(), prop_USR, prop_PWD);
-        } catch (Exception e) {
-            log.error("unsubscribe " + e);
-            throw new BridgeException(e);
-        }
-    }
-
-    // UTIL METHODS
-
-    private void registerContextCallback(String conversationId) throws BrokerException {
-        log.debug("registerContextCallback");
-        // When an event is notified, uAAL REST will send it to CALLBACK_CONTEXT....
-        // Create first a RESTlet on that URL with Spark, and whenever an event arrives,
-        // build a Message with a Payload and push it to InterIoT.
-
-        //publisher = broker.createPublisher(BrokerTopics.BRIDGE_IPSM.getTopicName()+ "_" + platform.getId().getId(), Message.class);
-
-        post(CALLBACK_CONTEXT_PATH + conversationId,
-                (req, res) -> {
-                    log.debug("Got message from uaal");
-                    Message callbackMessage = new Message();
-                    // Metadata
-                    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
-                    metadata.initializeMetadata();
-                    metadata.setConversationId(conversationId);
-                    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.OBSERVATION);
-                    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.RESPONSE);
-                    metadata.setSenderPlatformId(new EntityID(platform.getId().getId()));
-                    callbackMessage.setMetadata(metadata);
-                    // Payload (Parse event and get values)
-                    String event = req.body();
-                    Model eventModel = ModelFactory.createDefaultModel();
-                    eventModel.read(new ByteArrayInputStream(event.getBytes()), null, "TURTLE");
-                    // Uncomment and use this payload if IPSM does not translate automatically
-//		    String observationURIIdentifier=demoGetMeasurementURI(eventModel);
-//		    Calendar observationTime=demoGetTimestamp(eventModel);
-//		    String sensorURIIdentifier=demoGetSubject(eventModel);
-//		    float observationValue=demoGetValue(eventModel);
-//		    MessagePayload payload = INTERMWDemoUtils.createWeightObservationPayload(
-//			    observationURIIdentifier, observationTime, 
-//			    sensorURIIdentifier, observationValue); 
-                    callbackMessage.setPayload(new MessagePayload(eventModel));
-                    // Send to InterIoT
-                    log.debug("Publish message to interoit");
-                    publisher.publish(callbackMessage);
-                    log.debug("After publish");
-                    res.status(200);
-                    return "";
-                });
-    }
-
-    private String getInteriotSuffix(String interiotID) {
-        int lastindex = interiotID.lastIndexOf("#");
-        if (lastindex < 0) { // Now interiot ID ends with InterIoT.owl# but it used to end with /
-            lastindex = interiotID.lastIndexOf("/");
-        }
-        return interiotID.substring(lastindex + 1);
-    }
-
-//    private String demoSuffixUaal(String uaalID){
-//	return uaalID.substring(uaalID.lastIndexOf("#")+1);
-//    }
-//
-//    private Float demoGetValue(Model eventModel) {
-//	Property p = eventModel.getProperty("http://ontology.universaal.org/Measurement.owl#value");
-//	StmtIterator stmts = eventModel.listStatements(null, p, (RDFNode) null);
-//	if (stmts.hasNext()) {
-//	    Statement s = stmts.next();
-//	    return s.getFloat();
-//	}
-//	return null;
-//    }
-//
-//    private String demoGetSubject(Model eventModel) {
-//	Property p = eventModel.getProperty("http://www.w3.org/1999/02/22-rdf-syntax-ns#subject");
-//	StmtIterator stmts = eventModel.listStatements(null, p, (RDFNode) null);
-//	if (stmts.hasNext()) {
-//	    Statement s = stmts.next();
-//	    if(s.getObject().isResource()){
-//	    String uri = s.getObject().asResource().getURI();
-//	    return INTERIOT_URI_THING_PREFIX+uri.substring(uri.indexOf("#") + 1);
-//	    }
-//	}
-//	return null;
-//    }
-//
-//    private Calendar demoGetTimestamp(Model eventModel) {
-//	Property p = eventModel.getProperty("http://ontology.universAAL.org/Context.owl#hasTimestamp");
-//	StmtIterator stmts = eventModel.listStatements(null, p, (RDFNode) null);
-//	if (stmts.hasNext()) {
-//	    Statement s = stmts.next();
-//	    Calendar c = Calendar.getInstance();
-//	    c.setTimeInMillis(s.getLong());
-//	    return c;
-//	}
-//	return null;
-//    }
-//
-//    private String demoGetMeasurementURI(Model eventModel) {
-//	Property p = eventModel.getProperty("http://www.w3.org/1999/02/22-rdf-syntax-ns#object");
-//	StmtIterator stmts = eventModel.listStatements(null, p, (RDFNode) null);
-//	if (stmts.hasNext()) {
-//	    Statement s = stmts.next();
-//	    if(s.getObject().isResource()){
-//	    String uri = s.getObject().asResource().getURI();
-//	    return INTERIOT_URI_OBS_PREFIX+uri.substring(uri.indexOf("#") + 1);
-//	    }
-//	}
-//	return null;
-//    }
-
-    @SuppressWarnings("StatementWithEmptyBody")
     @Override
-    public void send(Message message) throws BridgeException {
-        log.debug("send");
-        Set<URIManagerMessageMetadata.MessageTypesEnum> messageTypesEnumSet = message.getMetadata().getMessageTypes();
-        try {
-            if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.THING_REGISTER)) {
-                log.debug("THING_REGISTER");
-                // TODO Discuss with pawel EntityTypeDevice to enum
-                Set<String> entityIds = INTERMWDemoUtils.getEntityIDsFromPayload(message.getPayload(),
-                        INTERMWDemoUtils.EntityTypeDevice);
+    public Message registerPlatform(Message msg) throws Exception {
+	/*
+	 * Create a Space in universAAL REST API for INTER-IoT as a user. Then
+	 * create a Default Service Caller, since we will only ever need a
+	 * single Service Caller for all our calls.
+	 */
 
-                // XXX Discuss with matevz, flavio At this point we can
-                // do two things, iterate over the list and do atomic
-                // creations or introduce a bulk creation method
-                // For the moment. It is implemented the first option,
-                // in order to preserve the Bridge API TODO consisder
-                // changing it
+	log.info("Entering registerPlatform");
+	
+	boolean init=msg.getMetadata().getMessageTypes().contains(MessageTypesEnum.SYS_INIT);
+	if(!init){
+	    String bodySpace = Body.CREATE_SPACE
+		    .replace(Body.ID, space)
+		    .replace(Body.CALLBACK, bridgeCallbackUrl.toString());
+	    String bodyCaller = Body.CREATE_CALLER
+		    .replace(Body.ID, DEFAULT_CALLER);
 
-                for (String entityId : entityIds) {
-                    // TODO Loop over the payload to include possible
-                    // observations in the creation or a schema of the
-                    // 'Thing'
+	    UAALClient.post(url + "spaces", usr, pwd, JSON, bodySpace);
+	    UAALClient.post(url + "spaces/" + space + "/service/callers", usr, pwd, JSON, bodyCaller);
+	}// Else do not re-create platform (only to save network, it's OK anyway)
+	
+	// Register the Spark callback servlets, only once per platform, INIT or not
+	registerCallback_CONTEXT();
+	registerCallback_DEVICE();
+	registerCallback_VALUE();
 
-                    if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.SYS_INIT)) {
-                        create(entityId, message, true);
-                    } else {
-                        create(entityId, message, false);
-                    }
-                }
-            } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.THING_UNREGISTER)) {
-                log.debug("THING_UNREGISTER");
-                Set<String> entityIds = INTERMWDemoUtils.getEntityIDsFromPayload(message.getPayload(),
-                        INTERMWDemoUtils.EntityTypeDevice);
-                for (String entityId : entityIds) {
-                    delete(entityId);
-                }
-            } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.THING_UPDATE)) {
-                log.debug("THING_UPDATE");
-                // FIXME This implementation assumes that only one
-                // attribute is updated at once
-                // FIXME This code is for the demo only. It will break
-                // otherwise.
-                if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.OBSERVATION)) {
-                    Set<String> entities = INTERMWDemoUtils.getEntityIDsFromPayload(message.getPayload(),
-                            INTERMWDemoUtils.EntityTypeDevice);
-                    if (entities.isEmpty())
-                        throw new BridgeException("No entities of type Device found in the Payload");
-                    String entity = entities.iterator().next();
+	log.info("Completed registerPlatform");
 
-                    System.out.println("Updating thing:" + entity);
-                    update(entity, message);
-                }
+	return ok(msg);
+    }
 
-            } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.QUERY)) {
-                log.debug("QUERY");
-                // XXX Improve the Query definition
+    @Override
+    public Message unregisterPlatform(Message msg) throws Exception {
+	/*
+	 * Delete the Space created in registerPlatform for INTER-IoT from the
+	 * uAAL REST API. This will also delete all its elements that were
+	 * created afterwards.
+	 */
 
-                Set<String> entities = INTERMWDemoUtils.getEntityIDsFromPayload(message.getPayload(),
-                        INTERMWDemoUtils.EntityTypeDevice);
-                if (entities.isEmpty())
-                    throw new PayloadException("No entities of type Device found in the Payload");
+	// TODO Is it OK to remove the Space? It depends on the recovery: If the
+	// Space is deleted, when INTER-IoT registers the platform again, it
+	// will have to re-create and re-subscribe all the things it had before.
 
-                throw new BridgeException("QUERY not implemented");
-				/*String entity = entities.iterator().next();
+	log.info("Entering unregisterPlatform");
 
-				Query q = new DefaultQueryImpl(new ThingId(entity));
-				read(q);*/
+	UAALClient.delete(url + "spaces/" + space, usr, pwd);
 
-            } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.SUBSCRIBE)) {
-                log.debug("SUBSCRIBE");
-                // Assuming the subscribing to one thing
-                Set<String> entities = INTERMWDemoUtils.getEntityIDsFromPayload(message.getPayload(),
-                        INTERMWDemoUtils.EntityTypeDevice);
-                if (entities.isEmpty())
-                    throw new PayloadException("No entities of type Device found in the Payload");
+	log.info("Completed unregisterPlatform");
 
-                String entity = entities.iterator().next();
-                if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.SYS_INIT)) {
-                    subscribe(entity,
-                            message.getMetadata().getConversationId().orElse(""), true);
-                } else {
-                    subscribe(entity, message.getMetadata().getConversationId().orElse(""), false);
-                }
+	return ok(msg);
+    }
+    
+    @Override
+    public Message updatePlatform(Message msg) throws Exception {
+	/*
+	 * Update a Space in universAAL REST API for INTER-IoT as a user.
+	 * This only updates the associated properties of the Space, nothing else.
+	 */
 
-            } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.UNSUBSCRIBE)) {
-                log.debug("UNSUBSCRIBE");
-                String conversationID = message.getMetadata().getConversationId().orElse("");
-                unsubscribe(new SubscriptionId(conversationID));
-            } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.DISCOVERY)) {
-                throw new UnsupportedActionException("The action DISCOVERY is currently unsupported");
-            } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.PLATFORM_REGISTER)) {
-                log.debug("PLATFORM_REGISTER");
-                if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.SYS_INIT)) {
-                    registerPlatform(true);
-                } else {
-                    registerPlatform(false);
-                }
-            } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.PLATFORM_UNREGISTER)) {
-                //We should not throw an exception here,
-                // because the bridge should compose a reply message and sent it upstream
-            } else if (messageTypesEnumSet.contains(URIManagerMessageMetadata.MessageTypesEnum.UNRECOGNIZED)) {
-                throw new UnknownActionException(
-                        "The action is labelled as UNRECOGNIZED and thus is unprocessable by component "
-                                + this.getClass().getName() + " in platform " + platform.getId().getId());
-            } else {
-                throw new UnknownActionException(
-                        "The message type is not properly handled and can't be processed"
-                                + this.getClass().getName() + " in platform " + platform.getId().getId());
-            }
-            // TODO For now we cereate a geenric response message. Think
-            // about sending a specific status
+	// TODO This assumes that any changes to the callback URL have 
+	// been performed at AbstractBridge. Otherwise everything remains the same.
 
-            Message responseMessage = createResponseMessage(message);
-            try {
-                log.debug("Sending response");
-                publisher.publish(responseMessage);
-            } catch (BrokerException e) {
-                log.error("Error publishing response");
-                throw new MessageException("error publishing response", e);
-            }
+	log.info("Entering updatePlatform");
+	/*
+	bridgeCallback_ID = "/"+encodePlatformId(platform.getPlatformId());
+	bridgeCallback_CONTEXT = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_CONTEXT;
+	bridgeCallback_DEVICE = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_DEVICE;
+	bridgeCallback_VALUE = bridgeCallbackUrl.toString()+bridgeCallback_ID+PATH_VALUE;
 
-        } catch (MessageException | UnsupportedActionException | UnknownActionException e) {
-            log.error("send " + e);
-            throw new BridgeException(e.toString());
-        }
+	String bodySpace = Body.CREATE_SPACE
+		.replace(Body.ID, space)
+		.replace(Body.CALLBACK, bridgeCallbackUrl.toString());
 
+	UAALClient.put(url + "spaces", usr, pwd, JSON, bodySpace);
 
+	// Re-Register the Spark callback servlets, in the new callback URL (previous ones cannot be removed)
+	registerCallback_CONTEXT();
+	registerCallback_DEVICE();
+	registerCallback_VALUE();
+	*/
+	log.info("Completed updatePlatform");
+
+	return ok(msg);
+    }
+
+    // ------------------------------------------
+
+    @Override
+    public Message subscribe(Message msg) throws Exception  {
+	/*
+	 * Subscribe to events sent by an existing device in uAAL and forward them to intermw
+	 * Create a CSubscriber for this thing
+	 *  CSubscriber
+	 *    CEP[sub=thing.getThingID, pred=*, obj=*]
+	 * The Subscriber: Receive anything about this device
+	 */
+
+	log.info("Entering subscribe");
+
+	String deviceURI, body;
+	String conversationId = msg.getMetadata().getConversationId().orElse(null);
+	boolean init=msg.getMetadata().getMessageTypes().contains(MessageTypesEnum.SYS_INIT);
+	
+//	validCallback_CONTEXT.add(conversationId);
+	for (Resource device : getDevices(msg.getPayload())) {
+	    deviceURI=injectHash(device.getURI());
+	    if(!init){
+		body = Body.CREATE_SUBSCRIBER
+			.replace(Body.ID, getSuffix(deviceURI))
+			.replace(Body.URI, deviceURI)
+			.replace(Body.CALLBACK, bridgeCallback_CONTEXT+conversationId);
+		UAALClient.post(url + "spaces/" + space + "/context/subscribers", usr, pwd, JSON, body);
+	    }// Else do not re-create subscriber (only to save network, it's OK anyway)
+	}
+
+	log.info("Completed subscribe");
+
+	return ok(msg);
+    }
+
+    @Override
+    public Message unsubscribe(Message msg) throws Exception {
+	/* Remove the CSubscriber created in subscribe */
+
+	log.info("Entering unsubscribe");
+
+//	String conversationId = msg.getMetadata().getConversationId().orElse(null);
+
+//	validCallback_CONTEXT.remove(conversationId);	
+	for (Resource device : getDevices(msg.getPayload())) { 
+	    UAALClient.delete(url + "spaces/" + space + "/context/subscribers/" + getSuffix(injectHash(device.getURI())), usr, pwd);
+	}
+
+	log.info("Completed unsubscribe");
+
+	return ok(msg);
+    }
+
+    // ------------------------------------------
+
+    @Override
+    public Message platformCreateDevices(Message msg) throws Exception {
+	/*
+	* Replicate a thing from another platform into uAAL
+	* Create a Device mydevice here that acts like a LDDI Exporter, with:
+	*  SCallee
+	*    DeviceService>controls>mydevice[GET]
+	*      Return the current instance of mydevice
+	*    DeviceService>controls>mydevice>hasvalue>value[GET]
+	*      Return the current value of mydevice
+	*    DeviceService>controls>mydevice[CHANGE(mydevice*)] ???
+	*      Changes current instance with the same instance with different props values
+	*    DeviceService>controls>mydevice[REMOVE] ???
+	*      Removes current instance? Notify INTER-IoT subscribers? Remove self?
+	*
+	*  CPublisher
+	*    CEP[sub=mydev, pred=*, obj=*]
+	*      Publisher to be used by update(String deviceURI, Message message)
+	* The Publisher: A controller that can publish anything about this thing
+	* This is the publisher that has to be used by observe and updateDevice?
+	* When a call is requested from uaal, uAAL REST will send it to CALLBACK_SERVICE....
+	* Create a RESTlet on that URL with Spark, and whenever a call arrives,
+	* build a Message with a Query and push it to InterIoT (?). Post the response back to uAAL
+	*/
+	
+	// TODO For now I am assuming this bridge can answer to calls from uAAL asking for:
+	// Get me the entire device with all its properties
+	// Get me the "value" sensed/controlled by the device
+	// Should I cover anything else?
+	// ...but platformCreateDevices is not for what I though. What then?
+
+	log.info("Entering platformCreateDevice");
+	log.debug("Entering platformCreateDevice\n"+msg.serializeToJSONLD());
+
+	String deviceURI, deviceType, deviceValueType, bodyS1, bodyS2, bodyC;
+
+	for (Resource device : getDevices(msg.getPayload())) { 
+	    deviceURI = injectHash(device.getURI());
+	    deviceType = getSpecializedType(device);
+	    deviceValueType = getValueType(deviceType);
+	    bodyS1 = Body.CREATE_CALLEE_GET
+		    .replace(Body.ID, getSuffixCalleeGET(deviceURI))
+		    .replace(Body.CALLBACK, bridgeCallback_DEVICE+getSuffix(deviceURI))
+		    .replace(Body.TYPE, deviceType)
+		    .replace(Body.URI, deviceURI);
+	    bodyS2 = Body.CREATE_CALLEE_GETVALUE
+		    .replace(Body.ID, getSuffixCalleeGETVALUE(deviceURI))
+		    .replace(Body.CALLBACK, bridgeCallback_VALUE+getSuffix(deviceURI))
+		    .replace(Body.TYPE, deviceType)
+		    .replace(Body.TYPE_OBJ, deviceValueType)
+		    .replace(Body.URI, deviceURI);
+	    bodyC = Body.CREATE_PUBLISHER
+		    .replace(Body.ID, getSuffix(deviceURI))
+		    .replace(Body.URI, deviceURI);
+//	    validCallback_DEVICE.add(getSuffix(deviceURI));
+//	    validCallback_VALUE.add(getSuffix(deviceURI));
+	    UAALClient.post(url + "spaces/" + space + "/service/callees", usr, pwd, JSON, bodyS1);
+	    UAALClient.post(url + "spaces/" + space + "/service/callees", usr, pwd, JSON, bodyS2);
+	    UAALClient.post(url + "spaces/" + space + "/context/publishers", usr, pwd, JSON, bodyC);
+	}
+
+	log.info("Completed platformCreateDevice");
+
+	return ok(msg);
+    }
+
+    @Override
+    public Message platformUpdateDevices(Message msg) throws Exception {
+	/*
+	* Modify the status of a thing from another platform and notify uAAL
+	* Modify the Device mydevice that will be handled by the Callee
+	*/
+	// TODO publish the change as event? I'd say no...
+	// ...but platformUpdateDevices is not for what I though. What then?
+
+	log.info("Entering platformUpdateDevice");
+	log.debug("Entering platformUpdateDevice\n"+msg.serializeToJSONLD());
+
+	String deviceURI, deviceType, deviceValueType, bodyS1, bodyS2, bodyC;
+
+	for (Resource device : getDevices(msg.getPayload())) { 
+	    deviceURI = injectHash(device.getURI());
+	    deviceType = getSpecializedType(device);
+	    deviceValueType = getValueType(deviceType);
+	    bodyS1=Body.CREATE_CALLEE_GET
+		    .replace(Body.ID, getSuffixCalleeGET(deviceURI))
+		    .replace(Body.CALLBACK, bridgeCallback_DEVICE+getSuffix(deviceURI))
+		    .replace(Body.TYPE, deviceType)
+		    .replace(Body.URI, deviceURI);
+	    bodyS2 = Body.CREATE_CALLEE_GETVALUE
+		    .replace(Body.ID, getSuffixCalleeGETVALUE(deviceURI))
+		    .replace(Body.CALLBACK, bridgeCallback_VALUE+getSuffix(deviceURI))
+		    .replace(Body.TYPE, deviceType)
+		    .replace(Body.TYPE_OBJ, deviceValueType)
+		    .replace(Body.URI, deviceURI);
+	    bodyC = Body.CREATE_PUBLISHER
+		    .replace(Body.ID, getSuffix(deviceURI))
+		    .replace(Body.URI, deviceURI);
+//	    validCallback_DEVICE.add(getSuffix(deviceURI));
+//	    validCallback_VALUE.add(getSuffix(deviceURI));
+	    UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffixCalleeGET(deviceURI), usr, pwd, JSON, bodyS1);
+	    UAALClient.put(url + "spaces/" + space + "/service/callees/"+getSuffixCalleeGETVALUE(deviceURI), usr, pwd, JSON, bodyS2);
+	    UAALClient.put(url + "spaces/" + space + "/context/publishers/"+getSuffix(deviceURI), usr, pwd, JSON, bodyC);
+	}
+
+	log.info("Completed platformUpdateDevice");
+
+	return ok(msg);
+    }
+
+    @Override
+    public Message platformDeleteDevices(Message msg) throws Exception {
+	/* Remove the Device mydevice created in platformUpdateDevices */
+
+	log.info("Entering platformDeleteDevice");
+	log.debug("Entering platformDeleteDevice\n"+msg.serializeToJSONLD());
+
+	for (Resource device : getDevices(msg.getPayload())) { 
+	    String deviceURI=injectHash(device.getURI());
+//	    validCallback_DEVICE.remove(getSuffix(deviceURI));
+//	    validCallback_VALUE.remove(getSuffix(deviceURI));
+	    UAALClient.delete(url+"spaces/"+space+"/service/callees/"+getSuffixCalleeGET(deviceURI), usr, pwd);
+	    UAALClient.delete(url+"spaces/"+space+"/service/callees/"+getSuffixCalleeGETVALUE(deviceURI), usr, pwd);
+	    UAALClient.delete(url + "spaces/" + space + "/context/publishers/" + getSuffix(deviceURI), usr, pwd);
+	}
+
+	log.info("Completed platformDeleteDevice");
+
+	return ok(msg);
+    }
+
+    // ------------------------------------------
+
+    @Override
+    public Message query(Message msg) throws Exception {
+	/*
+	 * Create a ServiceRequest asking for the equivalent query from a DefaultServiceCaller
+	 *  SCaller
+	 *    DeviceService>controls>URI=query.getEntityID + MY_URI=query.getType
+	 * Return a parsed Thing from the returned Device instance
+	 */
+
+	log.info("Entering query");
+	log.debug("Entering query\n"+msg.serializeToJSONLD());
+	Message responseMsg = createResponseMessage(msg);
+	
+	List<Resource> reqIoTDevices = getDevices(msg.getPayload());
+        if (reqIoTDevices.isEmpty()) {
+            // Query all : in uaal this is equivalent to listDevices (without device registry init)
+	    String body = Body.CALL_GETALLDEVICES_BUS;
+	    String serviceResponse = UAALClient.post(url + "spaces/" + space
+		    + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
+	    Model jena = ModelFactory.createDefaultModel();
+	    Model result = ModelFactory.createDefaultModel();
+	    jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
+	    if (jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))) {
+		log.warn("Could not find devices in uAAL because there is no one answering to the request");
+		responseMsg.setPayload(new IoTDevicePayload(result));
+		responseMsg.getMetadata().setStatus("OK");
+		return responseMsg;
+	    } else if (jena.contains(null, jena.getProperty(URI_STATUS),
+		    jena.getResource(URI_TIMEOUT))
+		    || jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_FAIL))
+		    || jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_DENIED))) {
+		log.warn("Could not find devices in uAAL because there was an error");
+		return error(msg);
+	    }
+	    ResIterator roots = jena.listResourcesWithProperty(RDF.type, jena.getResource(URI_MULTI));
+	    if (roots.hasNext()) { // Many responses aggregated into one RDF list. Values are in each "first"
+		NodeIterator responses = jena.listObjectsOfProperty(RDF.first);
+		while (responses.hasNext()) {
+		    String response = responses.next().asLiteral().getLexicalForm(); //responses are serialized
+		    Model auxJena = ModelFactory.createDefaultModel();
+		    auxJena.read(new ByteArrayInputStream(response.getBytes()), null, "TURTLE");
+		    String turtle = auxJena.listObjectsOfProperty(auxJena.getProperty(URI_PARAM))
+			    .next().asLiteral().getString();//Get the value from the response (also serialized)
+		    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");//Add to result
+//		    deviceAddOld(msg, result);
+		}
+	    } else { // Only one response, no list, it is right in the model
+		String turtle = jena.listObjectsOfProperty(jena.getProperty(URI_PARAM))
+			.next().asLiteral().getString();
+		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");//Add to result
+	    }
+	    MessagePayload responsePayload = new MessagePayload(result); //TODO IoTDevicePayload ?
+	    responseMsg.setPayload(responsePayload);
+	    responseMsg.getMetadata().setStatus("OK");
+	    log.info("Completed query");
+	    return responseMsg;
+	} else {
+	    for (Resource reqIoTDevice : reqIoTDevices) {
+		// Many devices per call? According to docs, no, so just do this with the first one
+		String body = Body.CALL_GETDEVICE
+			.replace(Body.URI, injectHash(reqIoTDevice.getURI()))
+			.replace(Body.TYPE, URI_DEVICE);
+		String serviceResponse = UAALClient.post(url + "spaces/" + space
+			+ "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
+		Model jena = ModelFactory.createDefaultModel();
+		Model result = ModelFactory.createDefaultModel();
+		jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
+		if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))){
+		    log.warn("Could not find devices in uAAL because there is no one answering to the request");
+		    responseMsg.setPayload(new IoTDevicePayload(result));
+		    responseMsg.getMetadata().setStatus("OK");
+		    return responseMsg;
+		}else if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_TIMEOUT)) ||
+			jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_FAIL)) ||
+			jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_DENIED))){
+		    log.warn("Could not find devices in uAAL because there was an error");
+		    return error(msg);
+		}
+		// The output is itself a serialized device TODO prevent multivalues (see listDevices)
+		String output=jena.getRequiredProperty(
+			jena.getResource(URI_OUTPUT), 
+			jena.getProperty(URI_PARAM))
+			.getObject().asLiteral().getString();
+		result.read(new ByteArrayInputStream(output.getBytes()), null, "TURTLE");
+		responseMsg.setPayload(new IoTDevicePayload(result));
+		responseMsg.getMetadata().setStatus("OK");
+		log.info("Completed query");
+		return responseMsg;
+	    }
+	}
+        return error(msg);
+    }
+
+    @Override
+    public Message listDevices(Message msg) throws Exception {
+	/*
+	 * Return the full reconstructed Device, including value. This
+	 * implementation asks for any "get device" that may be out there, then
+	 * goes through all the received responses. There is an alternative
+	 * implementation commented out at the end of the class.
+	 */
+
+	log.info("Entering listDevices");
+	log.debug("Entering listDevices\n"+msg.serializeToJSONLD());
+	Message responseMsg = createResponseMessage(msg);
+	String body = Body.CALL_GETALLDEVICES_BUS;
+
+	String serviceResponse = UAALClient
+		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
+	
+	Model jena = ModelFactory.createDefaultModel();
+	Model result = ModelFactory.createDefaultModel();
+	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
+	
+	if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))){
+	    log.warn("Could not find devices in uAAL because there is no one answering to the request");
+	    responseMsg.setPayload(new IoTDevicePayload(result));
+	    responseMsg.getMetadata().setStatus("OK");
+	    return responseMsg;
+	}else if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_TIMEOUT)) ||
+		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_FAIL)) ||
+		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_DENIED))){
+	    log.warn("Could not find devices in uAAL because there was an error");
+	    return error(msg);
+	}
+	
+	deviceRegistryInitializeOld(msg, result);
+	
+	ResIterator roots = jena.listResourcesWithProperty(RDF.type, jena.getResource(URI_MULTI));
+	if (roots.hasNext()) { // Many responses aggregated into one RDF list. Values are in each "first"
+	    NodeIterator responses = jena.listObjectsOfProperty(RDF.first);
+	    while (responses.hasNext()) {
+		// Each individual response is a serialized ServiceResponse, extract the output
+		String response = responses.next().asLiteral().getLexicalForm();
+		Model auxJena = ModelFactory.createDefaultModel();
+		auxJena.read(new ByteArrayInputStream(response.getBytes()), null, "TURTLE");
+		String turtle = auxJena.listObjectsOfProperty(auxJena.getProperty(URI_PARAM))
+			.next().asLiteral().getString();
+		// The output is a serialized Device, add it to the result
+		result = ModelFactory.createDefaultModel();
+		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
+		deviceAddOld(msg, result);
+	    }
+	} else { // Only one response, no list, it is right in the model
+	    String turtle = jena.listObjectsOfProperty(jena.getProperty(URI_PARAM))
+		    .next().asLiteral().getString();
+	    // The output is a serialized Device, add it to the result
+	    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
+	}
+	
+//	responseMsg.setPayload(new IoTDevicePayload(result));
+	responseMsg.getMetadata().setStatus("OK");
+
+	log.info("Completed listDevices");
+
+//	return deviceRegistryInitializeOld(msg, result);
+	return responseMsg;
+    }
+    
+    private Message deviceRegistryInitializeOld(Message original, Model jena) throws Exception{
+	// Initialize device registry
+	try{
+	    Message deviceRegistryInitializeMessage = new Message();
+	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
+	    metadata.initializeMetadata();
+	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
+	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
+	    //metadata.setConversationId(conversationId);
+	    String conversationId = original.getMetadata().getConversationId().orElse(null);
+	    metadata.setConversationId(conversationId);
+//	    MessagePayload devicePayload = new MessagePayload(jena);
+	    MessagePayload devicePayload = new MessagePayload();
+	    deviceRegistryInitializeMessage.setMetadata(metadata);
+	    deviceRegistryInitializeMessage.setPayload(devicePayload);
+	    publisher.publish(deviceRegistryInitializeMessage);
+	    log.debug("Device_Registry_Initialize message has been published upstream.");
+	    return ok(original);
+	}catch(Exception ex){
+	    return error(original);
+	}
+    }
+    
+    private Message deviceAddOld(Message original, Model jena) throws Exception{
+	try{
+	    Message deviceAddMessage = new Message();
+	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
+	    metadata.initializeMetadata();
+	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_ADD_OR_UPDATE);
+	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
+	    //metadata.setConversationId(conversationId); 
+	    String conversationId = original.getMetadata().getConversationId().orElse(null);
+	    metadata.setConversationId(conversationId);
+	    MessagePayload devicePayload = new MessagePayload(jena);
+	    deviceAddMessage.setMetadata(metadata);
+	    deviceAddMessage.setPayload(devicePayload);
+	    publisher.publish(deviceAddMessage);
+	    log.debug("Device_Add message has been published upstream.");
+	    return ok(original);
+	}catch(Exception ex){
+	    return error(original);
+	}
+    }
+    
+//    private Message deviceRegistryInitializeNew(Message original, Model jena){
+//	Message responseMessage = this.createResponseMessage(original);
+//	responseMessage.getMetadata().setMessageType(MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
+//	responseMessage.getMetadata().addMessageType(MessageTypesEnum.RESPONSE);
+//	try {
+//	    MessagePayload mwMessagePayload = new MessagePayload(jena);
+//	    responseMessage.setPayload(mwMessagePayload);
+//	} catch (Exception e) {
+//	    responseMessage.getMetadata().addMessageType(MessageTypesEnum.ERROR);
+//	    responseMessage.getMetadata().asErrorMessageMetadata().setExceptionStackTrace(e);
+//	}
+//	return responseMessage;
+//    }
+
+    @Override
+    public Message observe(Message msg) throws Exception {
+	/* Send event to universAAL */
+	// TODO There are going to be multiple observations? Maybe
+
+	log.info("Entering observe");
+	log.debug("Entering observe\n"+msg.serializeToJSONLD());
+	
+	Model event = msg.getPayload().getJenaModel();
+	String deviceURI = injectHash(event.listObjectsOfProperty(RDF.subject).next().asResource().getURI());
+	String eventURI = event.listStatements(null, RDF.type, event.getResource(URI_EVENT)).nextStatement().getSubject().getURI();
+	Writer turtle = new StringWriter();
+	event.removeAll(event.getResource(eventURI), event.getProperty(URI_PROVIDER), null)
+	.write(turtle, "TURTLE");
+	String body = turtle.toString();
+	turtle.close();
+	
+	//TODO PATCH This is to temporarily solve the issue of uAAL serializing only the object in the first line
+	String firstLine = "<" + eventURI + "> <" + RDF.type.toString() + "> <" + URI_EVENT + "> . ";
+
+	UAALClient.post(url + "spaces/" + space + "/context/publishers/" + getSuffix(deviceURI), usr, pwd, TEXT, firstLine+body);
+
+	log.info("Completed observe");
+
+	return ok(msg);
+    }
+
+    @Override
+    public Message actuate(Message msg) throws Exception {
+	/*
+	 * Here I am going to assume that it works like observer, only that the
+	 * payload is an "actuation" instead of am "observation", and that, just
+	 * like in observer, it has been properly translated to uAAL format by
+	 * IPSM. In the case of observe, that was a ContextEvent. Here it should
+	 * be a ServiceRequest (but that's considerably more difficult).
+	 */
+	
+	log.info("Entering actuate");
+	log.debug("Entering actuate\n"+msg.serializeToJSONLD());
+	
+	Model request = msg.getPayload().getJenaModel();
+	Writer turtle = new StringWriter();
+	request.write(turtle, "TURTLE");
+	String body = turtle.toString(); // TODO Check this way to get request works
+	turtle.close();
+
+	//TODO PATCH This is to temporarily solve the issue of uAAL serializing only the object in the first line
+	String firstLine = "_:BN000000 <" + RDF.type.toString() + "> <" + URI_REQUEST + "> . \n";
+
+	UAALClient.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, firstLine+body);
+
+	log.info("Completed actuate");
+
+	return ok(msg);
+    }
+
+    // ------------------------------------------
+
+    @Override
+    public Message error(Message msg) throws Exception {
+	// TODO Sends information about any error that occurred inside bridge or inside InterMW.
+	log.info("Error occured in {}...", msg);
+	Message responseMessage = createResponseMessage(msg);
+	responseMessage.getMetadata().setStatus("KO");
+	responseMessage.getMetadata().addMessageType(URIManagerMessageMetadata.MessageTypesEnum.ERROR);
+	return responseMessage;
+    }
+
+    @Override
+    public Message unrecognized(Message msg) throws Exception {
+	// TODO Custom message type which was not recognized by InterMW.
+	log.info("Unrecognized message type.");
+	return ok(msg);
+    }
+
+    // ------------------------------------------
+
+    private String getSuffix(String interiotID) {
+	int lastindex = interiotID.lastIndexOf("#");
+	if (lastindex < 0) { // Now interiot ID ends with InterIoT.owl# but it used to end with /
+	    lastindex = interiotID.lastIndexOf("/");
+	}
+	return interiotID.substring(lastindex + 1);
+    }
+    
+    private String getSuffixCalleeGET(String interiotID) {
+	return getSuffix(interiotID)+"device";
+    }
+    
+    private String getSuffixCalleeGETVALUE(String interiotID) {
+	return getSuffix(interiotID)+"value";
+    }
+    
+    private void registerCallback_CONTEXT() throws BrokerException {
+	// When an event is notified, uAAL REST will send it to
+	// bridgeCallback_CONTEXT/ConversationId. Create there a RESTlet, and
+	// whenever an event arrives, build a Message with an equivalent payload
+	// and push it to InterIoT.
+	
+	// Spark cannot unregister paths, so once bridgeCallback_CONTEXT + conversationId
+	// is there, it remains forever. An alternative is using bridgeCallback_CONTEXT + ":/id"
+	// and then getting the conversationId with req.params(":conversationId")
+
+	post(bridgeCallback_ID+PATH_CONTEXT + ":conversationId", (req, res) -> {
+	    log.debug("CONTEXT CALLBACK -> Got event from uaal");
+//	    if(!validCallback_CONTEXT.contains(req.params(":conversationId"))){
+//		res.status(404);
+//		return "";
+//	    }
+	    Message messageForInterIoT = new Message();
+	    // Metadata
+	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
+	    metadata.initializeMetadata();
+	    metadata.setConversationId(req.params(":conversationId"));
+	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.OBSERVATION);
+	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.RESPONSE);
+	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
+	    messageForInterIoT.setMetadata(metadata);
+	    // Payload
+	    String event = req.body();
+	    Model eventModel = ModelFactory.createDefaultModel();
+	    eventModel.read(new ByteArrayInputStream(event.getBytes()), null, "TURTLE");
+	    messageForInterIoT.setPayload(new MessagePayload(eventModel));
+	    // Send to InterIoT
+	    log.debug("CONTEXT CALLBACK -> Publish message to interiot");
+	    publisher.publish(messageForInterIoT);
+	    log.debug("CONTEXT CALLBACK -> After publish. Msg: \n"+messageForInterIoT.serializeToJSONLD());
+	    res.status(200);
+	    return "";
+	});
+    }
+    
+    private void registerCallback_DEVICE() throws BrokerException {
+	// This is for GET DEVICE.
+	// When a call is requested from uaal, uAAL REST will send it to this
+	// RESTlet. Build a Message with a Query? and push it to InterIoT (?).
+	// Post the response back to uAAL
+
+	post(bridgeCallback_ID+PATH_DEVICE + ":deviceId", (req, res) -> {
+	    log.debug("SERVICE CALLBACK -> Got request from uaal");
+//	    if(!validCallback_DEVICE.contains(req.params(":deviceId"))){
+//		res.status(404);
+//		return "";
+//	    }
+	    String originalCall = req.queryParams("o");
+	    Message messageForInterIoT = new Message();
+	    // TODO Metadata
+	    // TODO Payload
+	    // Send to InterIoT
+	    log.debug("SERVICE CALLBACK -> Send request to interiot");
+	    publisher.publish(messageForInterIoT);
+	    // TODO Get response from interiot ???
+	    log.debug("SERVICE CALLBACK -> After request. Msg:.... \n");
+	    String body = Body.RESP_FAILURE;// TODO turn response into ServiceResponse ???
+	    new Thread() { // TODO Pool?
+		Object lock = new Object();
+		public void run() {
+		    try {
+			lock.wait(2500); //Wait until the 200 is sent before posting this
+			UAALClient.post(url + "spaces/" + space	+ "/service/callees/" + req.params(":deviceId")
+				+ "?o=" + originalCall, usr, pwd, TEXT, body);
+		    } catch (Exception e) {
+			log.error("Error sending service response back to uAAL at registerServiceCallback1", e);
+		    }
+		}
+	    }.start();
+	    res.status(200);
+	    return "";
+	});
+    }
+    
+    private void registerCallback_VALUE() throws BrokerException {
+	// This is for GET DEVICE VALUE
+	// When a call is requested from uaal, uAAL REST will send it to this
+	// RESTlet. Build a Message with a Query? and push it to InterIoT (?).
+	// Post the response back to uAAL
+
+	post(bridgeCallback_ID+PATH_VALUE + ":deviceId", (req, res) -> {
+	    log.debug("SERVICE CALLBACK -> Got request from uaal");
+//	    if(!validCallback_VALUE.contains(req.params(":deviceId"))){
+//		res.status(404);
+//		return "";
+//	    }
+	    String originalCall = req.queryParams("o");
+	    Message messageForInterIoT = new Message();
+	    // TODO Metadata
+	    // TODO Payload
+	    // Send to InterIoT
+	    log.debug("SERVICE CALLBACK -> Send request to interiot");
+	    publisher.publish(messageForInterIoT);
+	    // TODO Get response from interiot ???
+	    log.debug("SERVICE CALLBACK -> After request. Msg:.... \n");
+	    String body = Body.RESP_FAILURE;;// TODO turn response into ServiceResponse ???
+	    new Thread() { // TODO Pool?
+		Object lock = new Object();
+		public void run() {
+		    try {
+			lock.wait(2500); //Wait until the 200 is sent before posting this
+			UAALClient.post(url + "spaces/" + space	+ "/service/callees/" + req.params(":deviceId")
+				+ "?o=" + originalCall, usr, pwd, JSON, body);
+		    } catch (Exception e) {
+			log.error("Error sending service response back to uAAL at registerServiceCallback2", e);
+		    }
+		}
+	    }.start();
+	    res.status(200);
+	    return "";
+	});
+    }
+    
+    private Message ok(Message inMsg){
+	Message responseMsg = createResponseMessage(inMsg);
+	responseMsg.getMetadata().setStatus("OK");
+	return createResponseMessage(responseMsg);
+    }
+    
+    private List<Resource> getDevices(MessagePayload payload) {
+	Model model = payload.getJenaModel();
+	return model.listResourcesWithProperty(RDF.type,
+		model.getResource("http://inter-iot.eu/GOIoTP#IoTDevice"))
+		.toList();
+    }
+    
+    private String getValueType(String deviceType) {
+	// TODO Auto-generated method stub: Get type of hasValue property for a given device type
+	if (deviceType.equals("http://ontology.universAAL.org/Device.owl#TemperatureSensor"))
+	    return "http://www.w3.org/2001/XMLSchema#float";
+	else if (deviceType.equals("http://ontology.universaal.inter-iot.eu/Train#PresenceSensor"))
+	    return "http://ontology.universAAL.org/Device.owl#StatusValue";
+	else if (deviceType.equals("http://ontology.universaal.inter-iot.eu/Train#TurnoutActuator"))
+	    return "http://ontology.universaal.inter-iot.eu/Train#TurnoutState";
+	
+	return "http://www.w3.org/2001/XMLSchema#float";
+    }
+
+    private String getSpecializedType(Resource device) {
+	try{
+	    StmtIterator types = device.listProperties(RDF.type);
+	    while (types.hasNext()){
+		String t = types.next().getResource().getURI();
+		if (t.equals("http://ontology.universAAL.org/Device.owl#TemperatureSensor")
+			|| t.equals("http://ontology.universaal.inter-iot.eu/Train#PresenceSensor")
+			|| t.equals("http://ontology.universaal.inter-iot.eu/Train#TurnoutActuator")) {
+		    return t;
+		}
+	    }
+	    //TODO Extract device most specialized RDF Type !!!
+	}catch(Exception ex){
+	    log.warn("Error extracting most specialized Device type. Using generic uAAL ValueDevice", ex);
+	    return "http://ontology.universAAL.org/Device.owl#ValueDevice";
+	}
+	log.warn("Could not extract most specialized Device type. Using generic uAAL ValueDevice");
+	return "http://ontology.universAAL.org/Device.owl#ValueDevice";
+    }
+    
+    private String encodePlatformId(String platformId){
+	// From https://stackoverflow.com/questions/607176/ ... 
+	// ... java-equivalent-to-javascripts-encodeuricomponent-that-produces-identical-outpu
+	try {
+	    return URLEncoder.encode(platformId, "UTF-8")
+	    .replaceAll("\\+", "%20")
+	    .replaceAll("\\%21", "!")
+	    .replaceAll("\\%27", "'")
+	    .replaceAll("\\%28", "(")
+	    .replaceAll("\\%29", ")")
+	    .replaceAll("\\%7E", "~");
+	} catch (UnsupportedEncodingException e) {
+	    log.error("This should have never happened!", e);
+	    return platformId;
+	}
+    }
+    
+//    @Override
+//    public Message listDevices(Message msg) throws Exception {
+//	/*
+//	 * This is an alternative implementation of listDevices that checks
+//	 * existing Devices in CHe rather than ask for any potential
+//	 * "get device" service profile. The downside of this one is that some
+//	 * devices recorded by CHe may not have a "get device" service, or are
+//	 * not present anymore. On the good side, it is more simple and reliable
+//	 * (as long as CHe is running).
+//	 */
+//
+//	log.info("Entering listDevices");
+//	log.debug("Entering listDevices\n" + msg.serializeToJSONLD());
+//	Message responseMsg = createResponseMessage(msg);
+//	String body = Body.CALL_GETALLDEVICES_CHE;
+//
+//	String serviceResponse = UAALClient
+//		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, JSON, body);
+//	
+//	// Extract CHe response from the returned ServiceResponse
+//	Model jena2 = ModelFactory.createDefaultModel();
+//	jena2.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
+//	String turtle2 = jena2.getRequiredProperty(jena2.getResource(URI_OUTPUT),jena2.getProperty(URI_PARAM))
+//		.getObject().asLiteral().getString();
+//	// Extract devices from CHe response
+//	jena2 = ModelFactory.createDefaultModel();
+//	jena2.read(new ByteArrayInputStream(turtle2.getBytes()), null, "TURTLE");
+//	List<Resource> devicesList = jena2.listResourcesWithProperty(RDF.type,
+//		jena2.getResource("http://ontology.universaal.org/PhThing.owl#Device")).toList();
+//	// Return that list to interiot. TODO Check if this is OK
+//	responseMsg.setPayload(new IoTDevicePayload(jena2));
+//	responseMsg.getMetadata().setStatus("OK");
+//
+//	log.info("Completed listDevices");
+//
+//	return responseMsg;
+//    }
+
+    private String injectHash(String uri){
+	if(uri.contains("#")){ // something.owl#thing
+	    return uri; // > something.owl#thing
+	}else{
+	    int index = uri.lastIndexOf("/");
+	    if(index<0){ // somethingthing
+		return "http://inter-iot.eu/default.owl#"+uri; // > ...owl#somethingthing
+	    }else{ // something/thing
+		return uri.substring(0, index+1)+"default.owl#"+uri.substring(index+1); 
+	    } // > something/default.owl#thing
+	}
     }
 }
