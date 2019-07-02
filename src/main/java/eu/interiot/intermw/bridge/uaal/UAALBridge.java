@@ -767,15 +767,11 @@ public class UAALBridge extends AbstractBridge {
 //		return "";
 //	    }
 	    String originalCall = req.queryParams("o");
-	    Message messageForInterIoT = new Message();
-	    // TODO Metadata
-	    // TODO Payload
-	    // Send to InterIoT
-	    log.debug("SERVICE CALLBACK -> Send request to interiot");
-	    publisher.publish(messageForInterIoT);
-	    // TODO Get response from interiot ???
-	    log.debug("SERVICE CALLBACK -> After request. Msg:.... \n");
-	    String body = Body.RESP_FAILURE;// TODO turn response into ServiceResponse ???
+	    // TODO Create message for INTERIoT asking for this device info
+	    // Message messageForInterIoT = new Message();
+	    // TODO Send the message and get the response and parse into uAAL body
+	    // TODO I cannot reconstruct the original URI only from its suffix, unless I store it in memory
+	    String body = Body.RESP_DEVICE_INFO.replace(Body.URI, "http://inter-iot.eu/default.owl#"+req.params(":deviceId"));
 	    new Thread() { // TODO Pool?
 		Object lock = new Object();
 		public void run() {

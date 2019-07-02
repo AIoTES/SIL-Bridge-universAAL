@@ -315,4 +315,18 @@ public class Body {
 	    + "_:BN000000 a :ServiceResponse ;"
 	    + "  :callStatus :service_specific_failure ."
 	    + ":service_specific_failure a :CallStatus .";
+    public static final String RESP_DEVICE_INFO = 
+	    "@prefix ns1: <http://www.daml.org/services/owl-s/1.1/Process.owl#> ."
+	    + "@prefix : <http://ontology.universAAL.org/uAAL.owl#> ."
+	    + "_:BN000000 a :ServiceResponse ;"
+	    + "  :callStatus :call_succeeded ;" 
+	    + "  :returns ("
+	    + "    <"+PREFIX+"output>" + "  ) ." 
+	    + "<"+PREFIX+"output> ns1:parameterValue \"\"\" "
+	    + "    @prefix : <http://ontology.universAAL.org/PhThing.owl#> ."
+	    + "    <"+URI+"> a <http://ontology.universAAL.org/Device.owl#ValueDevice> ,"
+	    + "        :Device ," 
+	    + "        :PhysicalThing ."
+	    + "    \"\"\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral> ;"
+	    + "  a ns1:Output ." + ":call_succeeded a :CallStatus .";
 }
