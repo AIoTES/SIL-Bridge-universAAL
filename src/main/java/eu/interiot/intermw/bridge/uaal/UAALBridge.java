@@ -29,6 +29,9 @@ import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.net.URLEncoder;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -95,7 +98,8 @@ public class UAALBridge extends AbstractBridge {
 //    private HashSet<String> validCallback_CONTEXT =new HashSet<String>();
 //    private HashSet<String> validCallback_DEVICE =new HashSet<String>();
 //    private HashSet<String> validCallback_VALUE =new HashSet<String>();
-
+    private ScheduledThreadPoolExecutor callbackExecutor;
+    
     public UAALBridge(BridgeConfiguration config, Platform platform) throws MiddlewareException {
 	super(config, platform);
 	log.debug("UniversAAL bridge is initializing...");
@@ -140,7 +144,8 @@ public class UAALBridge extends AbstractBridge {
 	 */
 
 	log.info("Entering registerPlatform");
-	
+	//TODO thread pool should be a number similar to the amount of devices in the bridge
+	callbackExecutor =  (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(10);
 	boolean init=msg.getMetadata().getMessageTypes().contains(MessageTypesEnum.SYS_INIT);
 	if(!init){
 	    String bodySpace = Body.CREATE_SPACE
@@ -177,6 +182,7 @@ public class UAALBridge extends AbstractBridge {
 
 	log.info("Entering unregisterPlatform");
 
+	callbackExecutor.shutdown();
 	UAALClient.delete(url + "spaces/" + space, usr, pwd);
 
 	log.info("Completed unregisterPlatform");
@@ -772,18 +778,19 @@ public class UAALBridge extends AbstractBridge {
 	    // TODO Send the message and get the response and parse into uAAL body
 	    // TODO I cannot reconstruct the original URI only from its suffix, unless I store it in memory
 	    String body = Body.RESP_DEVICE_INFO.replace(Body.URI, "http://inter-iot.eu/default.owl#"+req.params(":deviceId"));
-	    new Thread() { // TODO Pool?
-		Object lock = new Object();
-		public void run() {
-		    try {
-			lock.wait(2500); //Wait until the 200 is sent before posting this
-			UAALClient.post(url + "spaces/" + space	+ "/service/callees/" + req.params(":deviceId")
-				+ "?o=" + originalCall, usr, pwd, TEXT, body);
-		    } catch (Exception e) {
-			log.error("Error sending service response back to uAAL at registerServiceCallback1", e);
-		    }
-		}
-	    }.start();
+	    callbackExecutor.schedule(new PostServiceResponse(req.params(":deviceId"),  originalCall,  body),2,TimeUnit.SECONDS);
+//	    new Thread() { // TODO Pool?
+//		Object lock = new Object();
+//		public void run() {
+//		    try {
+//			lock.wait(2500); //Wait until the 200 is sent before posting this
+//			UAALClient.post(url + "spaces/" + space	+ "/service/callees/" + req.params(":deviceId")
+//				+ "?o=" + originalCall, usr, pwd, TEXT, body);
+//		    } catch (Exception e) {
+//			log.error("Error sending service response back to uAAL at registerServiceCallback1", e);
+//		    }
+//		}
+//	    }.start();
 	    res.status(200);
 	    return "";
 	});
@@ -811,18 +818,19 @@ public class UAALBridge extends AbstractBridge {
 	    // TODO Get response from interiot ???
 	    log.debug("SERVICE CALLBACK -> After request. Msg:.... \n");
 	    String body = Body.RESP_FAILURE;;// TODO turn response into ServiceResponse ???
-	    new Thread() { // TODO Pool?
-		Object lock = new Object();
-		public void run() {
-		    try {
-			lock.wait(2500); //Wait until the 200 is sent before posting this
-			UAALClient.post(url + "spaces/" + space	+ "/service/callees/" + req.params(":deviceId")
-				+ "?o=" + originalCall, usr, pwd, JSON, body);
-		    } catch (Exception e) {
-			log.error("Error sending service response back to uAAL at registerServiceCallback2", e);
-		    }
-		}
-	    }.start();
+	    callbackExecutor.schedule(new PostServiceResponse(req.params(":deviceId"),  originalCall,  body),2,TimeUnit.SECONDS);
+//	    new Thread() { // TODO Pool?
+//		Object lock = new Object();
+//		public void run() {
+//		    try {
+//			lock.wait(2500); //Wait until the 200 is sent before posting this
+//			UAALClient.post(url + "spaces/" + space	+ "/service/callees/" + req.params(":deviceId")
+//				+ "?o=" + originalCall, usr, pwd, JSON, body);
+//		    } catch (Exception e) {
+//			log.error("Error sending service response back to uAAL at registerServiceCallback2", e);
+//		    }
+//		}
+//	    }.start();
 	    res.status(200);
 	    return "";
 	});
@@ -938,6 +946,28 @@ public class UAALBridge extends AbstractBridge {
 	    }else{ // something/thing
 		return uri.substring(0, index+1)+"default.owl#"+uri.substring(index+1); 
 	    } // > something/default.owl#thing
+	}
+    }
+    
+    public class PostServiceResponse implements Runnable {
+	private String deviceId;
+	private String originalCall;
+	private String body;
+
+	public PostServiceResponse(String deviceId, String originalCall,
+		String body) {
+	    this.deviceId = deviceId;
+	    this.originalCall = originalCall;
+	    this.body = body;
+	}
+
+	public void run() {
+	    try {
+		UAALClient.post(url + "spaces/" + space + "/service/callees/"
+			+ deviceId + "?o=" + originalCall, usr, pwd, JSON, body);
+	    } catch (Exception e) {
+		e.printStackTrace();
+	    }
 	}
     }
 }
