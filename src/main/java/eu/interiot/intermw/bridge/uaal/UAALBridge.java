@@ -964,7 +964,7 @@ public class UAALBridge extends AbstractBridge {
 	public void run() {
 	    try {
 		UAALClient.post(url + "spaces/" + space + "/service/callees/"
-			+ deviceId + "?o=" + originalCall, usr, pwd, JSON, body);
+			+ deviceId + "?o=" + originalCall, usr, pwd, TEXT, body);
 	    } catch (Exception e) {
 		e.printStackTrace();
 	    }
