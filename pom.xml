@@ -3,23 +3,21 @@
 
     <modelVersion>4.0.0</modelVersion>
 
+     <parent>
+        <groupId>eu.interiot.intermw</groupId>
+        <artifactId>bridge.pom</artifactId>
+        <version>2.3.0</version>
+    </parent>
+
     <groupId>eu.interiot.intermw</groupId>
     <artifactId>mw.bridge.uaal</artifactId>
-    <version>2.3.0</version>
-    <name>INTER-IoT Bridge for UniversAAL Platform</name>
 
-    <properties>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-        <intermw.version>2.3.0</intermw.version>
-        <jena.version>3.5.0</jena.version>
-    </properties>
+    <name>INTER-IoT Bridge for UniversAAL Platform</name>
 
     <dependencies>
         <dependency>
             <groupId>eu.interiot.intermw</groupId>
             <artifactId>mw.bridges.api</artifactId>
-            <version>${intermw.version}</version>
         </dependency>
 <!--         <dependency> -->
 <!--             <groupId>com.googlecode.json-simple</groupId> -->
@@ -30,31 +28,7 @@
             <groupId>org.apache.jena</groupId>
             <artifactId>apache-jena-libs</artifactId>
             <type>pom</type>
-            <version>${jena.version}</version>
         </dependency>
     </dependencies>
 
-    <repositories>
-        <repository>
-            <id>nexus.inter-iot.eu-releases</id>
-            <url>http://nexus.inter-iot.eu/repository/maven-releases/</url>
-            <releases>
-				<enabled>true</enabled>
-			</releases>
-			<snapshots>
-				<enabled>false</enabled>
-			</snapshots>
-        </repository>
-        <repository>
-            <id>nexus.inter-iot.eu-snapshots</id>
-            <url>http://nexus.inter-iot.eu/repository/maven-snapshots/</url>
-			<releases>
-				<enabled>false</enabled>
-			</releases>
-			<snapshots>
-				<enabled>true</enabled>
-				<updatePolicy>always</updatePolicy>
-			</snapshots>
-        </repository>
-    </repositories>
 </project>
