@@ -778,7 +778,10 @@ public class UAALBridge extends AbstractBridge {
 	    // TODO Send the message and get the response and parse into uAAL body
 	    // TODO I cannot reconstruct the original URI only from its suffix, unless I store it in memory
 	    String body = Body.RESP_DEVICE_INFO.replace(Body.URI, "http://inter-iot.eu/default.owl#"+req.params(":deviceId"));
-	    callbackExecutor.schedule(new PostServiceResponse(req.params(":deviceId"),  originalCall,  body),2,TimeUnit.SECONDS);
+	    callbackExecutor.schedule(
+		    new PostServiceResponse(
+			    getSuffixCalleeGET(req.params(":deviceId")), originalCall,  body),
+		    2, TimeUnit.SECONDS);
 //	    new Thread() { // TODO Pool?
 //		Object lock = new Object();
 //		public void run() {
@@ -818,7 +821,10 @@ public class UAALBridge extends AbstractBridge {
 	    // TODO Get response from interiot ???
 	    log.debug("SERVICE CALLBACK -> After request. Msg:.... \n");
 	    String body = Body.RESP_FAILURE;;// TODO turn response into ServiceResponse ???
-	    callbackExecutor.schedule(new PostServiceResponse(req.params(":deviceId"),  originalCall,  body),2,TimeUnit.SECONDS);
+	    callbackExecutor.schedule(
+		    new PostServiceResponse(
+			    getSuffixCalleeGETVALUE(req.params(":deviceId")), originalCall,  body),
+		    2, TimeUnit.SECONDS);
 //	    new Thread() { // TODO Pool?
 //		Object lock = new Object();
 //		public void run() {
