@@ -29,7 +29,11 @@ import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.net.URLEncoder;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -60,6 +64,7 @@ import eu.interiot.message.managers.URI.URIManagerMessageMetadata;
 import eu.interiot.message.managers.URI.URIManagerMessageMetadata.MessageTypesEnum;
 import eu.interiot.message.metadata.PlatformMessageMetadata;
 import eu.interiot.message.payload.types.IoTDevicePayload;
+import eu.interiot.message.utils.MessageUtils;
 
 @eu.interiot.intermw.bridge.annotations.Bridge(platformType = "http://inter-iot.eu/UniversAAL")
 public class UAALBridge extends AbstractBridge {
@@ -99,6 +104,8 @@ public class UAALBridge extends AbstractBridge {
 //    private HashSet<String> validCallback_DEVICE =new HashSet<String>();
 //    private HashSet<String> validCallback_VALUE =new HashSet<String>();
     private ScheduledThreadPoolExecutor callbackExecutor;
+    protected ScheduledExecutorService intermwMsgExecutor;
+    private ScheduledFuture<Boolean> registryInitialized;
     
     public UAALBridge(BridgeConfiguration config, Platform platform) throws MiddlewareException {
 	super(config, platform);
@@ -133,7 +140,7 @@ public class UAALBridge extends AbstractBridge {
 	log.info("UniversAAL bridge has been initialized successfully.");
     }
 
-    // ------------------------------------------
+    // --------------------ABSTRACT BRIDGE----------------------
 
     @Override
     public Message registerPlatform(Message msg) throws Exception {
@@ -146,6 +153,7 @@ public class UAALBridge extends AbstractBridge {
 	log.info("Entering registerPlatform");
 	//TODO thread pool should be a number similar to the amount of devices in the bridge
 	callbackExecutor =  (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(10);
+	intermwMsgExecutor = Executors.newSingleThreadScheduledExecutor();
 	boolean init=msg.getMetadata().getMessageTypes().contains(MessageTypesEnum.SYS_INIT);
 	if(!init){
 	    String bodySpace = Body.CREATE_SPACE
@@ -183,6 +191,7 @@ public class UAALBridge extends AbstractBridge {
 	log.info("Entering unregisterPlatform");
 
 	callbackExecutor.shutdown();
+	intermwMsgExecutor.shutdown();
 	UAALClient.delete(url + "spaces/" + space, usr, pwd);
 
 	log.info("Completed unregisterPlatform");
@@ -265,7 +274,6 @@ public class UAALBridge extends AbstractBridge {
 	log.info("Entering unsubscribe");
 
 //	String conversationId = msg.getMetadata().getConversationId().orElse(null);
-
 //	validCallback_CONTEXT.remove(conversationId);	
 	for (Resource device : getDevices(msg.getPayload())) { 
 	    UAALClient.delete(url + "spaces/" + space + "/context/subscribers/" + getSuffix(injectHash(device.getURI())), usr, pwd);
@@ -304,8 +312,8 @@ public class UAALBridge extends AbstractBridge {
 	*/
 	
 	// TODO For now I am assuming this bridge can answer to calls from uAAL asking for:
-	// Get me the entire device with all its properties
-	// Get me the "value" sensed/controlled by the device
+	// -Get me the entire device with all its properties
+	// -Get me the "value" sensed/controlled by the device
 	// Should I cover anything else?
 	// ...but platformCreateDevices is not for what I though. What then?
 
@@ -507,58 +515,76 @@ public class UAALBridge extends AbstractBridge {
     @Override
     public Message listDevices(Message msg) throws Exception {
 	/*
-	 * Return the full reconstructed Device, including value. This
+	 * Return the full reconstructed Device(s), including value. This
 	 * implementation asks for any "get device" that may be out there, then
 	 * goes through all the received responses. There is an alternative
 	 * implementation commented out at the end of the class.
 	 */
-
 	log.info("Entering listDevices");
 	log.debug("Entering listDevices\n"+msg.serializeToJSONLD());
 	Message responseMsg = createResponseMessage(msg);
+	// Call "listDevices" on uAAL (it's like GET ALL DEVICES)
 	String body = Body.CALL_GETALLDEVICES_BUS;
-
 	String serviceResponse = UAALClient
 		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TEXT, body);
-	
+	log.debug(">>>Got ServiceResponse from uAAL with list of devices: \n"+serviceResponse);
+	// Turn uAAL response into Jena model
 	Model jena = ModelFactory.createDefaultModel();
 	Model result = ModelFactory.createDefaultModel();
 	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
-	
+	// Check if uAAL-errors in the response from uAAL
 	if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))){
 	    log.warn("Could not find devices in uAAL because there is no one answering to the request");
 	    responseMsg.setPayload(new IoTDevicePayload(result));
 	    responseMsg.getMetadata().setStatus("OK");
-	    return responseMsg;
+	    return responseMsg; // Return OK, but list was empty (no devices)
 	}else if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_TIMEOUT)) ||
 		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_FAIL)) ||
 		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_DENIED))){
 	    log.warn("Could not find devices in uAAL because there was an error");
-	    return error(msg);
+	    return error(msg); // Return not OK, there were errors in uAAL
 	}
+	// Initialize intermw device registry (what is this for?)
+	log.debug(">>>Sending \"Initialize Device Registry\" to INTERMW before adding devices");
+//	deviceRegistryInitializeOld(msg, result);
+	DeviceRegistryInitialize registryInitialize = new DeviceRegistryInitialize();
+        registryInitialized = intermwMsgExecutor.schedule(registryInitialize, 0, TimeUnit.SECONDS);
+        // registryInitialized only used for add dispatcher to wait for it
 	
-	deviceRegistryInitializeOld(msg, result);
-	
+	// Analyze the uAAL response in the Jena model to find devices. Then add each to intermw.
 	ResIterator roots = jena.listResourcesWithProperty(RDF.type, jena.getResource(URI_MULTI));
 	if (roots.hasNext()) { // Many responses aggregated into one RDF list. Values are in each "first"
 	    NodeIterator responses = jena.listObjectsOfProperty(RDF.first);
 	    while (responses.hasNext()) {
 		// Each individual response is a serialized ServiceResponse, extract the output
 		String response = responses.next().asLiteral().getLexicalForm();
+		log.debug(">>>Found many sub-responses in uAAL response. Analyzing this one: \n"+response);
 		Model auxJena = ModelFactory.createDefaultModel();
 		auxJena.read(new ByteArrayInputStream(response.getBytes()), null, "TURTLE");
 		String turtle = auxJena.listObjectsOfProperty(auxJena.getProperty(URI_PARAM))
 			.next().asLiteral().getString();
+		log.debug(">>>The device within the subresponse is: \n"+turtle);
 		// The output is a serialized Device, add it to the result
 		result = ModelFactory.createDefaultModel();
 		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
-		deviceAddOld(msg, result);
+		log.debug(">>>Sending \"Device Add Or Update\" to INTERMW with this device");
+//		deviceAddOld(msg, result);
+		DeviceUpdatesDispatcher dispatcher = new DeviceUpdatesDispatcher(result);
+		intermwMsgExecutor.schedule(dispatcher, 2, TimeUnit.SECONDS);
+		// The returned future is not used here because we fire & forget, not track it in a map
 	    }
 	} else { // Only one response, no list, it is right in the model
+	    log.debug(">>>Found only one response in uAAL response");
 	    String turtle = jena.listObjectsOfProperty(jena.getProperty(URI_PARAM))
 		    .next().asLiteral().getString();
+	    log.debug(">>>The device within the single response is: \n"+turtle);
 	    // The output is a serialized Device, add it to the result
 	    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
+	    log.debug(">>>Sending \"Device Add Or Update\" to INTERMW with this device");
+//	    deviceAddOld(msg, result);
+	    DeviceUpdatesDispatcher dispatcher = new DeviceUpdatesDispatcher(result);
+	    intermwMsgExecutor.schedule(dispatcher, 2, TimeUnit.SECONDS);
+	    // The returned future is not used here because we fire & forget, not track it in a map
 	}
 	
 //	responseMsg.setPayload(new IoTDevicePayload(result));
@@ -569,50 +595,50 @@ public class UAALBridge extends AbstractBridge {
 //	return deviceRegistryInitializeOld(msg, result);
 	return responseMsg;
     }
+       
+//    private Message deviceRegistryInitializeOld(Message original, Model jena) throws Exception{
+//	// Initialize device registry
+//	try{
+//	    Message deviceRegistryInitializeMessage = new Message();
+//	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
+//	    metadata.initializeMetadata();
+//	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
+//	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
+//	    //metadata.setConversationId(conversationId);
+//	    String conversationId = original.getMetadata().getConversationId().orElse(null);
+//	    metadata.setConversationId(conversationId);
+////	    MessagePayload devicePayload = new MessagePayload(jena);
+//	    MessagePayload devicePayload = new MessagePayload();
+//	    deviceRegistryInitializeMessage.setMetadata(metadata);
+//	    deviceRegistryInitializeMessage.setPayload(devicePayload);
+//	    publisher.publish(deviceRegistryInitializeMessage);
+//	    log.debug("Device_Registry_Initialize message has been published upstream.");
+//	    return ok(original);
+//	}catch(Exception ex){
+//	    return error(original);
+//	}
+//    }
     
-    private Message deviceRegistryInitializeOld(Message original, Model jena) throws Exception{
-	// Initialize device registry
-	try{
-	    Message deviceRegistryInitializeMessage = new Message();
-	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
-	    metadata.initializeMetadata();
-	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
-	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
-	    //metadata.setConversationId(conversationId);
-	    String conversationId = original.getMetadata().getConversationId().orElse(null);
-	    metadata.setConversationId(conversationId);
+//    private Message deviceAddOld(Message original, Model jena) throws Exception{
+//	try{
+//	    Message deviceAddMessage = new Message();
+//	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
+//	    metadata.initializeMetadata();
+//	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_ADD_OR_UPDATE);
+//	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
+//	    //metadata.setConversationId(conversationId); 
+//	    String conversationId = original.getMetadata().getConversationId().orElse(null);
+//	    metadata.setConversationId(conversationId);
 //	    MessagePayload devicePayload = new MessagePayload(jena);
-	    MessagePayload devicePayload = new MessagePayload();
-	    deviceRegistryInitializeMessage.setMetadata(metadata);
-	    deviceRegistryInitializeMessage.setPayload(devicePayload);
-	    publisher.publish(deviceRegistryInitializeMessage);
-	    log.debug("Device_Registry_Initialize message has been published upstream.");
-	    return ok(original);
-	}catch(Exception ex){
-	    return error(original);
-	}
-    }
-    
-    private Message deviceAddOld(Message original, Model jena) throws Exception{
-	try{
-	    Message deviceAddMessage = new Message();
-	    PlatformMessageMetadata metadata = new MessageMetadata().asPlatformMessageMetadata();
-	    metadata.initializeMetadata();
-	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_ADD_OR_UPDATE);
-	    metadata.setSenderPlatformId(new EntityID(platform.getPlatformId()));
-	    //metadata.setConversationId(conversationId); 
-	    String conversationId = original.getMetadata().getConversationId().orElse(null);
-	    metadata.setConversationId(conversationId);
-	    MessagePayload devicePayload = new MessagePayload(jena);
-	    deviceAddMessage.setMetadata(metadata);
-	    deviceAddMessage.setPayload(devicePayload);
-	    publisher.publish(deviceAddMessage);
-	    log.debug("Device_Add message has been published upstream.");
-	    return ok(original);
-	}catch(Exception ex){
-	    return error(original);
-	}
-    }
+//	    deviceAddMessage.setMetadata(metadata);
+//	    deviceAddMessage.setPayload(devicePayload);
+//	    publisher.publish(deviceAddMessage);
+//	    log.debug("Device_Add message has been published upstream.");
+//	    return ok(original);
+//	}catch(Exception ex){
+//	    return error(original);
+//	}
+//    }
     
 //    private Message deviceRegistryInitializeNew(Message original, Model jena){
 //	Message responseMessage = this.createResponseMessage(original);
@@ -703,23 +729,7 @@ public class UAALBridge extends AbstractBridge {
 	return ok(msg);
     }
 
-    // ------------------------------------------
-
-    private String getSuffix(String interiotID) {
-	int lastindex = interiotID.lastIndexOf("#");
-	if (lastindex < 0) { // Now interiot ID ends with InterIoT.owl# but it used to end with /
-	    lastindex = interiotID.lastIndexOf("/");
-	}
-	return interiotID.substring(lastindex + 1);
-    }
-    
-    private String getSuffixCalleeGET(String interiotID) {
-	return getSuffix(interiotID)+"device";
-    }
-    
-    private String getSuffixCalleeGETVALUE(String interiotID) {
-	return getSuffix(interiotID)+"value";
-    }
+    // --------------------CALLBACKS FOR UAAL REST API----------------------
     
     private void registerCallback_CONTEXT() throws BrokerException {
 	// When an event is notified, uAAL REST will send it to
@@ -841,6 +851,24 @@ public class UAALBridge extends AbstractBridge {
 	    return "";
 	});
     }
+        
+    // --------------------UTILITY METHODS----------------------
+
+    private String getSuffix(String interiotID) {
+	int lastindex = interiotID.lastIndexOf("#");
+	if (lastindex < 0) { // Now interiot ID ends with InterIoT.owl# but it used to end with /
+	    lastindex = interiotID.lastIndexOf("/");
+	}
+	return interiotID.substring(lastindex + 1);
+    }
+    
+    private String getSuffixCalleeGET(String interiotID) {
+	return getSuffix(interiotID)+"device";
+    }
+    
+    private String getSuffixCalleeGETVALUE(String interiotID) {
+	return getSuffix(interiotID)+"value";
+    }
     
     private Message ok(Message inMsg){
 	Message responseMsg = createResponseMessage(inMsg);
@@ -955,6 +983,8 @@ public class UAALBridge extends AbstractBridge {
 	}
     }
     
+    // --------------------AUX RUNNABLES----------------------
+    
     public class PostServiceResponse implements Runnable {
 	private String deviceId;
 	private String originalCall;
@@ -972,6 +1002,58 @@ public class UAALBridge extends AbstractBridge {
 		UAALClient.post(url + "spaces/" + space + "/service/callees/"
 			+ deviceId + "?o=" + originalCall, usr, pwd, TEXT, body);
 	    } catch (Exception e) {
+		e.printStackTrace();
+	    }
+	}
+    }
+    
+    private class DeviceRegistryInitialize implements Callable<Boolean> {
+	@Override
+	public Boolean call() throws Exception {
+//	    ClassLoader classLoader = UAALBridge.class.getClassLoader();
+//	    String deviceInitJson = IOUtils.toString(classLoader.getResource("device_init.json"), "UTF-8");
+//	    Message deviceRegistryInitializeMessage = new Message(deviceInitJson); //TODO use uAAL response?
+	    Message deviceRegistryInitializeMessage = new Message();
+	    MessageMetadata metadata = deviceRegistryInitializeMessage.getMetadata();
+	    metadata.setConversationId(MessageUtils.generateConversationID());
+	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
+	    metadata.asPlatformMessageMetadata().setSenderPlatformId(new EntityID(platform.getPlatformId()));
+	    log.debug("Sending DEVICE_REGISTRY_INITIALIZE message = "
+		    + deviceRegistryInitializeMessage.serializeToJSONLD());
+	    publisher.publish(deviceRegistryInitializeMessage);
+	    return true;
+	}
+    }
+
+    private class DeviceUpdatesDispatcher implements Runnable {
+	private Model result;
+
+	public DeviceUpdatesDispatcher(Model result) {
+	    this.result = result;
+	}
+
+	@Override
+	public void run() {
+	    try {
+		registryInitialized.get();
+		log.debug("Sending DEVICE_ADD_OR_UPDATE / DEVICE_REMOVE message");
+		Message deviceAddOrUpdate = new Message();
+		MessageMetadata metadata = deviceAddOrUpdate.getMetadata();
+		metadata.setConversationId(MessageUtils.generateConversationID());
+		metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_ADD_OR_UPDATE);
+		metadata.asPlatformMessageMetadata().setSenderPlatformId(
+			new EntityID(platform.getPlatformId()));
+		IoTDevicePayload ioTDevicePayload = new IoTDevicePayload(); // TODO use uAAL from jena model?
+		// Create devices
+		Resource subject = result.listSubjectsWithProperty(RDF.type,
+			result.getResource(URI_DEVICE)).next();
+		EntityID ioTDeviceID = new EntityID(subject.getURI());
+		ioTDevicePayload.createIoTDevice(ioTDeviceID);
+		// ioTDevicePayload.setHasName(ioTDeviceID, "New device name " + i);
+		deviceAddOrUpdate.setPayload(ioTDevicePayload);
+		publisher.publish(deviceAddOrUpdate);
+	    } catch (InterruptedException | ExecutionException
+		    | BrokerException e) {
 		e.printStackTrace();
 	    }
 	}
