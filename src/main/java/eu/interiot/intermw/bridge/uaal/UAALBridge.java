@@ -834,8 +834,9 @@ public class UAALBridge extends AbstractBridge {
 			result.getResource(URI_DEVICE)).next();
 		EntityID ioTDeviceID = new EntityID(subject.getURI());
 		ioTDevicePayload.createIoTDevice(ioTDeviceID);
-		// ioTDevicePayload.setHasName(ioTDeviceID, "New device name " + i);
+		ioTDevicePayload.setHasName(ioTDeviceID, "New device name " + subject.getURI());
 		deviceAddOrUpdate.setPayload(ioTDevicePayload);
+		log.debug(">>>About to publish to \"Add or Update\" to INTERMW with device: "+subject.getURI());
 		publisher.publish(deviceAddOrUpdate);
 	    } catch (InterruptedException | ExecutionException
 		    | BrokerException e) {
