@@ -24,6 +24,7 @@ package eu.interiot.intermw.bridge.uaal;
 import static spark.Spark.post;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.util.List;
@@ -837,9 +838,11 @@ public class UAALBridge extends AbstractBridge {
 		ioTDevicePayload.setHasName(ioTDeviceID, "New device name " + subject.getURI());
 		deviceAddOrUpdate.setPayload(ioTDevicePayload);
 		log.debug(">>>About to publish to \"Add or Update\" to INTERMW with device: "+subject.getURI());
+		log.debug("Sending DEVICE_ADD_OR_UPDATE message = "
+			    + deviceAddOrUpdate.serializeToJSONLD());
 		publisher.publish(deviceAddOrUpdate);
 	    } catch (InterruptedException | ExecutionException
-		    | BrokerException e) {
+		    | BrokerException | IOException e) {
 		e.printStackTrace();
 	    }
 	}
