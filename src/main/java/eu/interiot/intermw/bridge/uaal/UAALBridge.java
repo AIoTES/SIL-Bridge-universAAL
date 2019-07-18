@@ -831,7 +831,12 @@ public class UAALBridge extends AbstractBridge {
 			new EntityID(platform.getPlatformId()));
 		IoTDevicePayload ioTDevicePayload = new IoTDevicePayload(); // TODO use uAAL from jena model?
 		// Create devices
-		Resource subject = result.listSubjectsWithProperty(RDF.type,
+		log.debug(">>>Confirming device model: "+result.listStatements().toList().toString());
+		log.debug(">>>Confirming type: "+result.getResource(URI_DEVICE));
+		log.debug(">>>Confirming devices with type: "+result.listResourcesWithProperty(RDF.type,
+			result.getResource(URI_DEVICE)).hasNext());
+		
+		Resource subject = result.listResourcesWithProperty(RDF.type,
 			result.getResource(URI_DEVICE)).next();
 		EntityID ioTDeviceID = new EntityID(subject.getURI());
 		ioTDevicePayload.createIoTDevice(ioTDeviceID);
