@@ -84,7 +84,7 @@ public class UAALBridge extends AbstractBridge {
     private static final String URI_FAIL = "http://ontology.universAAL.org/uAAL.owl#service_specific_failure";
     private static final String URI_DENIED = "http://ontology.universAAL.org/uAAL.owl#denied";
     private static final String URI_NOMATCH = "http://ontology.universAAL.org/uAAL.owl#no_matching_service_found";
-    private static final String URI_DEVICE = "http://ontology.universaal.org/PhThing.owl#Device";
+    private static final String URI_DEVICE = "http://ontology.universAAL.org/PhThing.owl#Device";
     
     private final Logger log = LoggerFactory.getLogger(UAALBridge.class);
     private String url, usr, pwd, space;
