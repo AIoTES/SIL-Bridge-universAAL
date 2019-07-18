@@ -773,8 +773,6 @@ public class UAALBridge extends AbstractBridge {
 	    metadata.setConversationId(MessageUtils.generateConversationID());
 	    metadata.addMessageType(URIManagerMessageMetadata.MessageTypesEnum.DEVICE_REGISTRY_INITIALIZE);
 	    metadata.asPlatformMessageMetadata().setSenderPlatformId(new EntityID(platform.getPlatformId()));
-	    log.debug("Sending DEVICE_REGISTRY_INITIALIZE message = "
-		    + deviceRegistryInitializeMessage.serializeToJSONLD());
 	    publisher.publish(deviceRegistryInitializeMessage);
 	    return true;
 	}
@@ -798,11 +796,13 @@ public class UAALBridge extends AbstractBridge {
 		metadata.asPlatformMessageMetadata().setSenderPlatformId(
 			new EntityID(platform.getPlatformId()));
 		IoTDevicePayload ioTDevicePayload = new IoTDevicePayload(); // TODO use uAAL from jena model?
-		// Create devices
+		// Create devices (in the future you could use result directly, and IPSM will translate ^ )
 		Resource subject = result.listResourcesWithProperty(RDF.type,
 			result.getResource(URI_DEVICE)).next();
 		EntityID ioTDeviceID = new EntityID(subject.getURI());
+		EntityID platformId = new EntityID(platform.getPlatformId());
 		ioTDevicePayload.createIoTDevice(ioTDeviceID);
+		ioTDevicePayload.setIsHostedBy(ioTDeviceID, platformId);
 		ioTDevicePayload.setHasName(ioTDeviceID, Util.getSuffix(subject.getURI()));
 		deviceAddOrUpdate.setPayload(ioTDevicePayload);
 		publisher.publish(deviceAddOrUpdate);
