@@ -417,7 +417,7 @@ public class UAALBridge extends AbstractBridge {
 	Message resultMsg = createResponseMessage(msg);
 	List<Resource> reqIoTDevices = Util.getDevices(msg.getPayload());
 	if (reqIoTDevices.isEmpty()) {
-	    // Query all : in uaal this is equivalent to listDevices (without device registry init)
+	    // Query all devices : in uaal this is equivalent to listDevices (without device registry init)
 	    String body = Body.CALL_GETALLDEVICES_BUS;
 	    String rsp = UAALClient.post(
 		    url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TYPE_TEXT, body);
@@ -426,17 +426,9 @@ public class UAALBridge extends AbstractBridge {
 	    Model rspModel = ModelFactory.createDefaultModel();
 	    Model devsModel = ModelFactory.createDefaultModel();
 	    rspModel.read(new ByteArrayInputStream(rsp.getBytes()), null, "TURTLE");
-	    if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_NOMATCH))){
-		log.warn("Could not find devices in uAAL because there is no one answering to the request");
-		resultMsg.setPayload(new IoTDevicePayload(devsModel));
-		resultMsg.getMetadata().setStatus("OK");
-		return resultMsg;
-	    }else if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_TIMEOUT)) ||
-		    rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_FAIL)) ||
-		    rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_DENIED))){
-		log.warn("Could not find devices in uAAL because there was an error");
-		return error(msg);
-	    }
+	    Message error = checkServiceResponse(rspModel, msg);
+	    if(error != null) return error;
+	    
 	    // Analyze the uAAL response in the Jena model to find devices. Then add each to devsModel.
 	    ResIterator list = rspModel.listResourcesWithProperty(RDF.type, rspModel.getResource(URI_MULTI));
 	    if (list.hasNext()) { // Multi-service responses
@@ -460,8 +452,8 @@ public class UAALBridge extends AbstractBridge {
 	    log.info("Completed query");
 	    return resultMsg;
 	} else {
+	    // Query 1:N explicit devices. (According to docs it's only 1 so should do this only with the 1st)
 	    for (Resource reqIoTDevice : reqIoTDevices) {
-		// Many devices per call? According to docs, no, so just do this with the first one
 		String body = Body.CALL_GETDEVICE
 			.replace(Body.URI, Util.injectHash(reqIoTDevice.getURI()))
 			.replace(Body.TYPE, URI_DEVICE);
@@ -472,17 +464,8 @@ public class UAALBridge extends AbstractBridge {
 		Model rspModel = ModelFactory.createDefaultModel();
 		Model devModel = ModelFactory.createDefaultModel();
 		rspModel.read(new ByteArrayInputStream(rsp.getBytes()), null, "TURTLE");
-		if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_NOMATCH))){
-		    log.warn("Could not find devices in uAAL because there is no one answering to the request");
-		    resultMsg.setPayload(new IoTDevicePayload(devModel));
-		    resultMsg.getMetadata().setStatus("OK");
-		    return resultMsg;
-		}else if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_TIMEOUT)) ||
-			rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_FAIL)) ||
-			rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_DENIED))){
-		    log.warn("Could not find devices in uAAL because there was an error");
-		    return error(msg);
-		}
+		Message error = checkServiceResponse(rspModel, msg);
+		if(error != null) return error;
 
 		// The output is itself a serialized device TODO prevent multivalues (see listDevices)
 		String dev = rspModel
@@ -515,17 +498,8 @@ public class UAALBridge extends AbstractBridge {
 	// Turn uAAL response into Jena model, then check for uAAL errors
 	Model rspModel = ModelFactory.createDefaultModel();
 	rspModel.read(new ByteArrayInputStream(rsp.getBytes()), null, "TURTLE");
-	if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_NOMATCH))){
-	    log.warn("Could not find devices in uAAL because there is no one answering to the request");
-	    resultMsg.setPayload(new IoTDevicePayload(ModelFactory.createDefaultModel()));
-	    resultMsg.getMetadata().setStatus("OK");
-	    return resultMsg;
-	}else if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_TIMEOUT)) ||
-		rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_FAIL)) ||
-		rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_DENIED))){
-	    log.warn("Could not find devices in uAAL because there was an error");
-	    return error(msg);
-	}
+	Message error = checkServiceResponse(rspModel, msg);
+	if(error != null) return error;
 	
 	// INTERMW Device Registry Initialize (registryInitialized is for add dispatcher to wait on)
 	DeviceRegistryInitRunnable initRunnable = new DeviceRegistryInitRunnable();
