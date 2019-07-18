@@ -29,8 +29,6 @@ public class Util {
 	return getSuffix(interiotID)+"value";
     }
     
-
-    
     protected static List<Resource> getDevices(MessagePayload payload) {
 	Model model = payload.getJenaModel();
 	return model.listResourcesWithProperty(RDF.type,

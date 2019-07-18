@@ -24,12 +24,10 @@ package eu.interiot.intermw.bridge.uaal;
 import static spark.Spark.post;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -416,86 +414,88 @@ public class UAALBridge extends AbstractBridge {
 
 	log.info("Entering query");
 	log.debug("Entering query\n"+msg.serializeToJSONLD());
-	Message responseMsg = createResponseMessage(msg);
-	
+	Message resultMsg = createResponseMessage(msg);
 	List<Resource> reqIoTDevices = Util.getDevices(msg.getPayload());
-        if (reqIoTDevices.isEmpty()) {
-            // Query all : in uaal this is equivalent to listDevices (without device registry init)
+	if (reqIoTDevices.isEmpty()) {
+	    // Query all : in uaal this is equivalent to listDevices (without device registry init)
 	    String body = Body.CALL_GETALLDEVICES_BUS;
-	    String serviceResponse = UAALClient.post(url + "spaces/" + space
-		    + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TYPE_TEXT, body);
-	    Model jena = ModelFactory.createDefaultModel();
-	    Model result = ModelFactory.createDefaultModel();
-	    jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
-	    if (jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))) {
+	    String rsp = UAALClient.post(
+		    url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TYPE_TEXT, body);
+
+	    // Turn uAAL response into Jena model, then check for uAAL errors
+	    Model rspModel = ModelFactory.createDefaultModel();
+	    Model devsModel = ModelFactory.createDefaultModel();
+	    rspModel.read(new ByteArrayInputStream(rsp.getBytes()), null, "TURTLE");
+	    if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_NOMATCH))){
 		log.warn("Could not find devices in uAAL because there is no one answering to the request");
-		responseMsg.setPayload(new IoTDevicePayload(result));
-		responseMsg.getMetadata().setStatus("OK");
-		return responseMsg;
-	    } else if (jena.contains(null, jena.getProperty(URI_STATUS),
-		    jena.getResource(URI_TIMEOUT))
-		    || jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_FAIL))
-		    || jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_DENIED))) {
+		resultMsg.setPayload(new IoTDevicePayload(devsModel));
+		resultMsg.getMetadata().setStatus("OK");
+		return resultMsg;
+	    }else if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_TIMEOUT)) ||
+		    rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_FAIL)) ||
+		    rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_DENIED))){
 		log.warn("Could not find devices in uAAL because there was an error");
 		return error(msg);
 	    }
-	    ResIterator roots = jena.listResourcesWithProperty(RDF.type, jena.getResource(URI_MULTI));
-	    if (roots.hasNext()) { // Many responses aggregated into one RDF list. Values are in each "first"
-		NodeIterator responses = jena.listObjectsOfProperty(RDF.first);
-		while (responses.hasNext()) {
-		    String response = responses.next().asLiteral().getLexicalForm(); //responses are serialized
-		    Model auxJena = ModelFactory.createDefaultModel();
-		    auxJena.read(new ByteArrayInputStream(response.getBytes()), null, "TURTLE");
-		    String turtle = auxJena.listObjectsOfProperty(auxJena.getProperty(URI_PARAM))
-			    .next().asLiteral().getString();//Get the value from the response (also serialized)
-		    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");//Add to result
-//		    deviceAddOld(msg, result);
+	    // Analyze the uAAL response in the Jena model to find devices. Then add each to devsModel.
+	    ResIterator list = rspModel.listResourcesWithProperty(RDF.type, rspModel.getResource(URI_MULTI));
+	    if (list.hasNext()) { // Multi-service responses
+		NodeIterator subRsps = rspModel.listObjectsOfProperty(RDF.first);
+		while (subRsps.hasNext()) {
+		    String subRsp = subRsps.next().asLiteral().getLexicalForm();
+		    Model subRspModel = ModelFactory.createDefaultModel();
+		    subRspModel.read(new ByteArrayInputStream(subRsp.getBytes()), null, "TURTLE");
+		    String dev = subRspModel.listObjectsOfProperty(subRspModel.getProperty(URI_PARAM))
+			    .next().asLiteral().getString();
+		    devsModel.read(new ByteArrayInputStream(dev.getBytes()), null, "TURTLE"); //Add to model
 		}
-	    } else { // Only one response, no list, it is right in the model
-		String turtle = jena.listObjectsOfProperty(jena.getProperty(URI_PARAM))
+	    } else { // Single service response
+		String dev = rspModel.listObjectsOfProperty(rspModel.getProperty(URI_PARAM))
 			.next().asLiteral().getString();
-		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");//Add to result
+		devsModel.read(new ByteArrayInputStream(dev.getBytes()), null, "TURTLE"); //Add to model
 	    }
-	    MessagePayload responsePayload = new MessagePayload(result); //TODO IoTDevicePayload ?
-	    responseMsg.setPayload(responsePayload);
-	    responseMsg.getMetadata().setStatus("OK");
+	    MessagePayload responsePayload = new MessagePayload(devsModel); //TODO How? IoTDevicePayload ?
+	    resultMsg.setPayload(responsePayload);
+	    resultMsg.getMetadata().setStatus("OK");
 	    log.info("Completed query");
-	    return responseMsg;
+	    return resultMsg;
 	} else {
 	    for (Resource reqIoTDevice : reqIoTDevices) {
 		// Many devices per call? According to docs, no, so just do this with the first one
 		String body = Body.CALL_GETDEVICE
 			.replace(Body.URI, Util.injectHash(reqIoTDevice.getURI()))
 			.replace(Body.TYPE, URI_DEVICE);
-		String serviceResponse = UAALClient.post(url + "spaces/" + space
+		String rsp = UAALClient.post(url + "spaces/" + space
 			+ "/service/callers/" + DEFAULT_CALLER, usr, pwd, TYPE_TEXT, body);
-		Model jena = ModelFactory.createDefaultModel();
-		Model result = ModelFactory.createDefaultModel();
-		jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
-		if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))){
+
+		// Turn uAAL response into Jena model, then check for uAAL errors
+		Model rspModel = ModelFactory.createDefaultModel();
+		Model devModel = ModelFactory.createDefaultModel();
+		rspModel.read(new ByteArrayInputStream(rsp.getBytes()), null, "TURTLE");
+		if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_NOMATCH))){
 		    log.warn("Could not find devices in uAAL because there is no one answering to the request");
-		    responseMsg.setPayload(new IoTDevicePayload(result));
-		    responseMsg.getMetadata().setStatus("OK");
-		    return responseMsg;
-		}else if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_TIMEOUT)) ||
-			jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_FAIL)) ||
-			jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_DENIED))){
+		    resultMsg.setPayload(new IoTDevicePayload(devModel));
+		    resultMsg.getMetadata().setStatus("OK");
+		    return resultMsg;
+		}else if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_TIMEOUT)) ||
+			rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_FAIL)) ||
+			rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_DENIED))){
 		    log.warn("Could not find devices in uAAL because there was an error");
 		    return error(msg);
 		}
+
 		// The output is itself a serialized device TODO prevent multivalues (see listDevices)
-		String output=jena.getRequiredProperty(
-			jena.getResource(URI_OUTPUT), 
-			jena.getProperty(URI_PARAM))
+		String dev = rspModel
+			.getRequiredProperty(rspModel.getResource(URI_OUTPUT), rspModel.getProperty(URI_PARAM))
 			.getObject().asLiteral().getString();
-		result.read(new ByteArrayInputStream(output.getBytes()), null, "TURTLE");
-		responseMsg.setPayload(new IoTDevicePayload(result));
-		responseMsg.getMetadata().setStatus("OK");
+		devModel.read(new ByteArrayInputStream(dev.getBytes()), null, "TURTLE");
+		resultMsg.setPayload(new IoTDevicePayload(devModel)); //TODO How? IoTDevicePayload ?
+		resultMsg.getMetadata().setStatus("OK");
 		log.info("Completed query");
-		return responseMsg;
+		return resultMsg;
 	    }
 	}
-        return error(msg);
+	return error(msg);
     }
 
     @Override
@@ -514,11 +514,10 @@ public class UAALBridge extends AbstractBridge {
 	
 	// Turn uAAL response into Jena model, then check for uAAL errors
 	Model rspModel = ModelFactory.createDefaultModel();
-	Model devModel = ModelFactory.createDefaultModel();
 	rspModel.read(new ByteArrayInputStream(rsp.getBytes()), null, "TURTLE");
 	if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_NOMATCH))){
 	    log.warn("Could not find devices in uAAL because there is no one answering to the request");
-	    resultMsg.setPayload(new IoTDevicePayload(devModel));
+	    resultMsg.setPayload(new IoTDevicePayload(ModelFactory.createDefaultModel()));
 	    resultMsg.getMetadata().setStatus("OK");
 	    return resultMsg;
 	}else if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_TIMEOUT)) ||
@@ -542,6 +541,7 @@ public class UAALBridge extends AbstractBridge {
 		subRspModel.read(new ByteArrayInputStream(subRsp.getBytes()), null, "TURTLE");
 		String dev = subRspModel.listObjectsOfProperty(subRspModel.getProperty(URI_PARAM))
 			.next().asLiteral().getString();
+		Model devModel = ModelFactory.createDefaultModel(); // New model for each device
 		devModel.read(new ByteArrayInputStream(dev.getBytes()), null, "TURTLE");
 		// INTERMW Add or Update device (returned Future not used here - we fire & forget)
 		intermwMsgExecutor.schedule(new DeviceAddUpdateRunnable(devModel), 2, TimeUnit.SECONDS);
@@ -549,6 +549,7 @@ public class UAALBridge extends AbstractBridge {
 	} else { // Single service response
 	    String dev = rspModel.listObjectsOfProperty(rspModel.getProperty(URI_PARAM))
 		    .next().asLiteral().getString();
+	    Model devModel = ModelFactory.createDefaultModel(); // New model for each device
 	    devModel.read(new ByteArrayInputStream(dev.getBytes()), null, "TURTLE");
 	    // INTERMW Add or Update device (returned Future not used here - we fire & forget)
 	    intermwMsgExecutor.schedule(new DeviceAddUpdateRunnable(devModel), 2, TimeUnit.SECONDS);
@@ -745,6 +746,22 @@ public class UAALBridge extends AbstractBridge {
 	Message responseMsg = createResponseMessage(inMsg);
 	responseMsg.getMetadata().setStatus("OK");
 	return createResponseMessage(responseMsg);
+    }
+    
+    protected Message checkServiceResponse(Model model, Message msg) throws Exception{
+	if(model.contains(null, model.getProperty(URI_STATUS), model.getResource(URI_NOMATCH))){
+	    log.warn("Could not find devices in uAAL because there is no one answering to the request");
+	    Message resultMsg = createResponseMessage(msg);
+	    resultMsg.setPayload(new IoTDevicePayload(ModelFactory.createDefaultModel()));
+	    resultMsg.getMetadata().setStatus("OK");
+	    return resultMsg;
+	}else if(model.contains(null, model.getProperty(URI_STATUS), model.getResource(URI_TIMEOUT)) ||
+		model.contains(null, model.getProperty(URI_STATUS), model.getResource(URI_FAIL)) ||
+		model.contains(null, model.getProperty(URI_STATUS), model.getResource(URI_DENIED))){
+	    log.warn("Could not find devices in uAAL because there was an error");
+	    return error(msg);
+	}
+	return null;
     }
     
     // --------------------AUX RUNNABLES----------------------
