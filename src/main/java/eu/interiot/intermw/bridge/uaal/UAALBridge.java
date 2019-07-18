@@ -507,79 +507,57 @@ public class UAALBridge extends AbstractBridge {
 	 * implementation commented out at the end of the class.
 	 */
 	log.info("Entering listDevices");
-	log.debug("Entering listDevices\n"+msg.serializeToJSONLD());
-	Message responseMsg = createResponseMessage(msg);
-	// Call "listDevices" on uAAL (it's like GET ALL DEVICES)
+	Message resultMsg = createResponseMessage(msg);
 	String body = Body.CALL_GETALLDEVICES_BUS;
-	String serviceResponse = UAALClient
-		.post(url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TYPE_TEXT, body);
-	log.debug(">>>Got ServiceResponse from uAAL with list of devices: \n"+serviceResponse);
-	// Turn uAAL response into Jena model
-	Model jena = ModelFactory.createDefaultModel();
-	Model result = ModelFactory.createDefaultModel();
-	jena.read(new ByteArrayInputStream(serviceResponse.getBytes()), null, "TURTLE");
-	// Check if uAAL-errors in the response from uAAL
-	if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_NOMATCH))){
+	String rsp = UAALClient.post(
+		url + "spaces/" + space + "/service/callers/" + DEFAULT_CALLER, usr, pwd, TYPE_TEXT, body);
+	
+	// Turn uAAL response into Jena model, then check for uAAL errors
+	Model rspModel = ModelFactory.createDefaultModel();
+	Model devModel = ModelFactory.createDefaultModel();
+	rspModel.read(new ByteArrayInputStream(rsp.getBytes()), null, "TURTLE");
+	if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_NOMATCH))){
 	    log.warn("Could not find devices in uAAL because there is no one answering to the request");
-	    responseMsg.setPayload(new IoTDevicePayload(result));
-	    responseMsg.getMetadata().setStatus("OK");
-	    return responseMsg; // Return OK, but list was empty (no devices)
-	}else if(jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_TIMEOUT)) ||
-		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_FAIL)) ||
-		jena.contains(null, jena.getProperty(URI_STATUS), jena.getResource(URI_DENIED))){
+	    resultMsg.setPayload(new IoTDevicePayload(devModel));
+	    resultMsg.getMetadata().setStatus("OK");
+	    return resultMsg;
+	}else if(rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_TIMEOUT)) ||
+		rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_FAIL)) ||
+		rspModel.contains(null, rspModel.getProperty(URI_STATUS), rspModel.getResource(URI_DENIED))){
 	    log.warn("Could not find devices in uAAL because there was an error");
-	    return error(msg); // Return not OK, there were errors in uAAL
+	    return error(msg);
 	}
-	// Initialize intermw device registry (what is this for?)
-	log.debug(">>>Sending \"Initialize Device Registry\" to INTERMW before adding devices");
-//	deviceRegistryInitializeOld(msg, result);
-	DeviceRegistryInitialize registryInitialize = new DeviceRegistryInitialize();
-        registryInitialized = intermwMsgExecutor.schedule(registryInitialize, 0, TimeUnit.SECONDS);
-        // registryInitialized only used for add dispatcher to wait for it
+	
+	// INTERMW Device Registry Initialize (registryInitialized is for add dispatcher to wait on)
+	DeviceRegistryInitRunnable initRunnable = new DeviceRegistryInitRunnable();
+        registryInitialized = intermwMsgExecutor.schedule(initRunnable, 0, TimeUnit.SECONDS);
 	
 	// Analyze the uAAL response in the Jena model to find devices. Then add each to intermw.
-	ResIterator roots = jena.listResourcesWithProperty(RDF.type, jena.getResource(URI_MULTI));
-	if (roots.hasNext()) { // Many responses aggregated into one RDF list. Values are in each "first"
-	    NodeIterator responses = jena.listObjectsOfProperty(RDF.first);
-	    while (responses.hasNext()) {
-		// Each individual response is a serialized ServiceResponse, extract the output
-		String response = responses.next().asLiteral().getLexicalForm();
-		log.debug(">>>Found many sub-responses in uAAL response. Analyzing this one: \n"+response);
-		Model auxJena = ModelFactory.createDefaultModel();
-		auxJena.read(new ByteArrayInputStream(response.getBytes()), null, "TURTLE");
-		String turtle = auxJena.listObjectsOfProperty(auxJena.getProperty(URI_PARAM))
+	ResIterator list = rspModel.listResourcesWithProperty(RDF.type, rspModel.getResource(URI_MULTI));
+	if (list.hasNext()) { // Multi-service responses
+	    NodeIterator subRsps = rspModel.listObjectsOfProperty(RDF.first);
+	    while (subRsps.hasNext()) {
+		String subRsp = subRsps.next().asLiteral().getLexicalForm();
+		Model subRspModel = ModelFactory.createDefaultModel();
+		subRspModel.read(new ByteArrayInputStream(subRsp.getBytes()), null, "TURTLE");
+		String dev = subRspModel.listObjectsOfProperty(subRspModel.getProperty(URI_PARAM))
 			.next().asLiteral().getString();
-		log.debug(">>>The device within the subresponse is: \n"+turtle);
-		// The output is a serialized Device, add it to the result
-		result = ModelFactory.createDefaultModel();
-		result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
-		log.debug(">>>Sending \"Device Add Or Update\" to INTERMW with this device");
-//		deviceAddOld(msg, result);
-		DeviceUpdatesDispatcher dispatcher = new DeviceUpdatesDispatcher(result);
-		intermwMsgExecutor.schedule(dispatcher, 2, TimeUnit.SECONDS);
-		// The returned future is not used here because we fire & forget, not track it in a map
+		devModel.read(new ByteArrayInputStream(dev.getBytes()), null, "TURTLE");
+		// INTERMW Add or Update device (returned Future not used here - we fire & forget)
+		intermwMsgExecutor.schedule(new DeviceAddUpdateRunnable(devModel), 2, TimeUnit.SECONDS);
 	    }
-	} else { // Only one response, no list, it is right in the model
-	    log.debug(">>>Found only one response in uAAL response");
-	    String turtle = jena.listObjectsOfProperty(jena.getProperty(URI_PARAM))
+	} else { // Single service response
+	    String dev = rspModel.listObjectsOfProperty(rspModel.getProperty(URI_PARAM))
 		    .next().asLiteral().getString();
-	    log.debug(">>>The device within the single response is: \n"+turtle);
-	    // The output is a serialized Device, add it to the result
-	    result.read(new ByteArrayInputStream(turtle.getBytes()), null, "TURTLE");
-	    log.debug(">>>Sending \"Device Add Or Update\" to INTERMW with this device");
-//	    deviceAddOld(msg, result);
-	    DeviceUpdatesDispatcher dispatcher = new DeviceUpdatesDispatcher(result);
-	    intermwMsgExecutor.schedule(dispatcher, 2, TimeUnit.SECONDS);
-	    // The returned future is not used here because we fire & forget, not track it in a map
+	    devModel.read(new ByteArrayInputStream(dev.getBytes()), null, "TURTLE");
+	    // INTERMW Add or Update device (returned Future not used here - we fire & forget)
+	    intermwMsgExecutor.schedule(new DeviceAddUpdateRunnable(devModel), 2, TimeUnit.SECONDS);
 	}
 	
-//	responseMsg.setPayload(new IoTDevicePayload(result));
-	responseMsg.getMetadata().setStatus("OK");
-
+//	resultMsg.setPayload(new IoTDevicePayload(result));
+	resultMsg.getMetadata().setStatus("OK");
 	log.info("Completed listDevices");
-
-//	return deviceRegistryInitializeOld(msg, result);
-	return responseMsg;
+	return resultMsg;
     }
 
     @Override
@@ -722,7 +700,7 @@ public class UAALBridge extends AbstractBridge {
 	    String body = Body.RESP_DEVICE_INFO.replace(
 		    Body.URI, "http://inter-iot.eu/default.owl#" + req.params(":deviceId"));
 	    callbackExecutor.schedule(
-		    new PostServiceResponse(
+		    new PostServiceResponseRunnable(
 			    Util.getSuffixCalleeGET(req.params(":deviceId")), originalCall,  body),
 		    2, TimeUnit.SECONDS);
 	    res.status(200);
@@ -753,7 +731,7 @@ public class UAALBridge extends AbstractBridge {
 	    log.debug("SERVICE CALLBACK -> After request. Msg:.... \n");
 	    String body = Body.RESP_FAILURE;;// TODO turn response into ServiceResponse ???
 	    callbackExecutor.schedule(
-		    new PostServiceResponse(
+		    new PostServiceResponseRunnable(
 			    Util.getSuffixCalleeGETVALUE(req.params(":deviceId")), originalCall,  body),
 		    2, TimeUnit.SECONDS);
 	    res.status(200);
@@ -771,12 +749,12 @@ public class UAALBridge extends AbstractBridge {
     
     // --------------------AUX RUNNABLES----------------------
     
-    public class PostServiceResponse implements Runnable {
+    public class PostServiceResponseRunnable implements Runnable {
 	private String deviceId;
 	private String originalCall;
 	private String body;
 
-	public PostServiceResponse(String deviceId, String originalCall,
+	public PostServiceResponseRunnable(String deviceId, String originalCall,
 		String body) {
 	    this.deviceId = deviceId;
 	    this.originalCall = originalCall;
@@ -793,7 +771,7 @@ public class UAALBridge extends AbstractBridge {
 	}
     }
     
-    private class DeviceRegistryInitialize implements Callable<Boolean> {
+    private class DeviceRegistryInitRunnable implements Callable<Boolean> {
 	@Override
 	public Boolean call() throws Exception {
 //	    ClassLoader classLoader = UAALBridge.class.getClassLoader();
@@ -811,10 +789,10 @@ public class UAALBridge extends AbstractBridge {
 	}
     }
 
-    private class DeviceUpdatesDispatcher implements Runnable {
+    private class DeviceAddUpdateRunnable implements Runnable {
 	private Model result;
 
-	public DeviceUpdatesDispatcher(Model result) {
+	public DeviceAddUpdateRunnable(Model result) {
 	    this.result = result;
 	}
 
@@ -822,7 +800,6 @@ public class UAALBridge extends AbstractBridge {
 	public void run() {
 	    try {
 		registryInitialized.get();
-		log.debug("Sending DEVICE_ADD_OR_UPDATE / DEVICE_REMOVE message");
 		Message deviceAddOrUpdate = new Message();
 		MessageMetadata metadata = deviceAddOrUpdate.getMetadata();
 		metadata.setConversationId(MessageUtils.generateConversationID());
@@ -831,23 +808,14 @@ public class UAALBridge extends AbstractBridge {
 			new EntityID(platform.getPlatformId()));
 		IoTDevicePayload ioTDevicePayload = new IoTDevicePayload(); // TODO use uAAL from jena model?
 		// Create devices
-		log.debug(">>>Confirming device model: "+result.listStatements().toList().toString());
-		log.debug(">>>Confirming type: "+result.getResource(URI_DEVICE));
-		log.debug(">>>Confirming devices with type: "+result.listResourcesWithProperty(RDF.type,
-			result.getResource(URI_DEVICE)).hasNext());
-		
 		Resource subject = result.listResourcesWithProperty(RDF.type,
 			result.getResource(URI_DEVICE)).next();
 		EntityID ioTDeviceID = new EntityID(subject.getURI());
 		ioTDevicePayload.createIoTDevice(ioTDeviceID);
-		ioTDevicePayload.setHasName(ioTDeviceID, "New device name " + subject.getURI());
+		ioTDevicePayload.setHasName(ioTDeviceID, Util.getSuffix(subject.getURI()));
 		deviceAddOrUpdate.setPayload(ioTDevicePayload);
-		log.debug(">>>About to publish to \"Add or Update\" to INTERMW with device: "+subject.getURI());
-		log.debug("Sending DEVICE_ADD_OR_UPDATE message = "
-			    + deviceAddOrUpdate.serializeToJSONLD());
 		publisher.publish(deviceAddOrUpdate);
-	    } catch (InterruptedException | ExecutionException
-		    | BrokerException | IOException e) {
+	    } catch (Exception e) {
 		e.printStackTrace();
 	    }
 	}
