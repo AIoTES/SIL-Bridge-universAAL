@@ -26,6 +26,8 @@ import static spark.Spark.post;
 import java.io.ByteArrayInputStream;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
@@ -306,12 +308,20 @@ public class UAALBridge extends AbstractBridge {
 	    deviceValueType = Util.getValueType(deviceType);
 	    bodyS1 = Body.CREATE_CALLEE_GET
 		    .replace(Body.ID, Util.getSuffixCalleeGET(deviceURI))
-		    .replace(Body.CALLBACK, bridgeCallback_DEVICE+Util.getSuffix(deviceURI))
+		    .replace(Body.CALLBACK,
+			    bridgeCallback_DEVICE + Util.getSuffix(deviceURI)
+			    + "/" + URLEncoder.encode(deviceURI, "UTF-8")
+			    + "/" + URLEncoder.encode(deviceType, "UTF-8")
+			    + "/" + URLEncoder.encode(deviceValueType, "UTF-8"))
 		    .replace(Body.TYPE, deviceType)
 		    .replace(Body.URI, deviceURI);
 	    bodyS2 = Body.CREATE_CALLEE_GETVALUE
 		    .replace(Body.ID, Util.getSuffixCalleeGETVALUE(deviceURI))
-		    .replace(Body.CALLBACK, bridgeCallback_VALUE+Util.getSuffix(deviceURI))
+		    .replace(Body.CALLBACK,
+			    bridgeCallback_VALUE + Util.getSuffix(deviceURI)
+			    + "/" + URLEncoder.encode(deviceURI, "UTF-8")
+			    + "/" + URLEncoder.encode(deviceType, "UTF-8")
+			    + "/" + URLEncoder.encode(deviceValueType, "UTF-8"))
 		    .replace(Body.TYPE, deviceType)
 		    .replace(Body.TYPE_OBJ, deviceValueType)
 		    .replace(Body.URI, deviceURI);
@@ -348,14 +358,22 @@ public class UAALBridge extends AbstractBridge {
 	    deviceURI = Util.injectHash(device.getURI());
 	    deviceType = Util.getSpecializedType(device, log);
 	    deviceValueType = Util.getValueType(deviceType);
-	    bodyS1=Body.CREATE_CALLEE_GET
+	    bodyS1 = Body.CREATE_CALLEE_GET
 		    .replace(Body.ID, Util.getSuffixCalleeGET(deviceURI))
-		    .replace(Body.CALLBACK, bridgeCallback_DEVICE+Util.getSuffix(deviceURI))
+		    .replace(Body.CALLBACK,
+			    bridgeCallback_DEVICE + Util.getSuffix(deviceURI)
+			    + "/" + URLEncoder.encode(deviceURI, "UTF-8")
+			    + "/" + URLEncoder.encode(deviceType, "UTF-8")
+			    + "/" + URLEncoder.encode(deviceValueType, "UTF-8"))
 		    .replace(Body.TYPE, deviceType)
 		    .replace(Body.URI, deviceURI);
 	    bodyS2 = Body.CREATE_CALLEE_GETVALUE
 		    .replace(Body.ID, Util.getSuffixCalleeGETVALUE(deviceURI))
-		    .replace(Body.CALLBACK, bridgeCallback_VALUE+Util.getSuffix(deviceURI))
+		    .replace(Body.CALLBACK,
+			    bridgeCallback_VALUE + Util.getSuffix(deviceURI)
+			    + "/" + URLEncoder.encode(deviceURI, "UTF-8")
+			    + "/" + URLEncoder.encode(deviceType, "UTF-8")
+			    + "/" + URLEncoder.encode(deviceValueType, "UTF-8"))
 		    .replace(Body.TYPE, deviceType)
 		    .replace(Body.TYPE_OBJ, deviceValueType)
 		    .replace(Body.URI, deviceURI);
@@ -661,7 +679,7 @@ public class UAALBridge extends AbstractBridge {
 	// RESTlet. Build a Message with a Query? and push it to InterIoT (?).
 	// Post the response back to uAAL
 
-	post(bridgeCallback_ID+PATH_DEVICE + ":deviceId", (req, res) -> {
+	post(bridgeCallback_ID+PATH_DEVICE + ":deviceId/:uri/:type/:value", (req, res) -> {
 	    log.debug("SERVICE CALLBACK -> Got request from uaal");
 //	    if(!validCallback_DEVICE.contains(req.params(":deviceId"))){
 //		res.status(404);
@@ -672,8 +690,9 @@ public class UAALBridge extends AbstractBridge {
 	    // Message messageForInterIoT = new Message();
 	    // TODO Send the message and get the response and parse into uAAL body
 	    // TODO I cannot reconstruct the original URI only from its suffix, unless I store it in memory
-	    String body = Body.RESP_DEVICE_INFO.replace(
-		    Body.URI, "http://inter-iot.eu/default.owl#" + req.params(":deviceId"));
+	    String body = Body.RESP_DEVICE_INFO
+		    .replace(Body.URI, URLDecoder.decode(req.params(":uri"),"UTF-8"))
+		    .replace(Body.TYPE, URLDecoder.decode(req.params(":type"),"UTF-8"));
 	    callbackExecutor.schedule(
 		    new PostServiceResponseRunnable(
 			    Util.getSuffixCalleeGET(req.params(":deviceId")), originalCall,  body),
