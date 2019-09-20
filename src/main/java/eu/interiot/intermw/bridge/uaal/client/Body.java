@@ -324,7 +324,7 @@ public class Body {
 	    + "    <"+PREFIX+"output>" + "  ) ." 
 	    + "<"+PREFIX+"output> ns1:parameterValue \"\"\" "
 	    + "    @prefix : <http://ontology.universAAL.org/PhThing.owl#> ."
-	    + "    <"+URI+"> a <http://ontology.universAAL.org/Device.owl#ValueDevice> ,"
+	    + "    <"+URI+"> a <"+TYPE+"> ,"
 	    + "        :Device ," 
 	    + "        :PhysicalThing ."
 	    + "    \"\"\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral> ;"
