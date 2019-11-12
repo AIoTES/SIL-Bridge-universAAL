@@ -1,3 +1,37 @@
+/*
+ * INTER-IoT. Interoperability of IoT Platforms.
+ * INTER-IoT is a R&D project which has received funding from the European
+ * Union's Horizon 2020 research and innovation programme under grant
+ * agreement No 687283.
+ * <p>
+ * Copyright 2019 ITACA-SABIEN, http://www.tsb.upv.es
+ * Instituto Tecnologico de Aplicaciones de Comunicacion
+ * Avanzadas - Grupo Tecnologias para la Salud y el
+ * Bienestar (SABIEN)
+ * <p>
+ * For more information, contact:
+ * - @author <a href="mailto:alfiva@itaca.upv.es">Alvaro Fides</a>
+ * - Project coordinator:  <a href="mailto:coordinator@inter-iot.eu"></a>
+ * <p>
+ * See the NOTICE file distributed with this work for additional
+ * information regarding copyright ownership
+ * <p>
+ * This code is made available under either EPL license, or the 
+ * Apache Software License, Version 2.0;
+ * You may use the entirety of the code under the conditions specified 
+ * by one of either licenses, chosen at your discretion.
+ * <p>
+ * A copy of the EPL is available at the root application directory.
+ * You may obtain a copy of the Apcache License at
+ * <p>
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package eu.interiot.intermw.bridge.uaal;
 
 import java.io.UnsupportedEncodingException;
