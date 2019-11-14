@@ -1,0 +1,29 @@
+Remote API Manager
+
+Copyright 2019 ITACA-SABIEN, http://www.tsb.upv.es
+Instituto Tecnologico de Aplicaciones de Comunicacion 
+Avanzadas - Grupo Tecnologias para la Salud y el 
+Bienestar (SABIEN)
+
+I. Included Software
+
+This project includes software developed by
+Robert Harder (rob@iharder.net)
+Made available as public domain
+
+
+II. Used Software
+
+This product uses software developed at
+INTER-IoT. Interoperability of IoT Platforms. (https://inter-iot.eu/).
+Licensed under the EPL.
+
+This product uses software developed at
+Apache Jena (https://jena.apache.org/)
+Licensed under the Apache License 2.0.
+
+
+III. License Summary
+- Eclipse Public License
+- Apache License 2.0
+
