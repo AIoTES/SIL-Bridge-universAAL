@@ -107,12 +107,13 @@ public class Util {
 	// ... java-equivalent-to-javascripts-encodeuricomponent-that-produces-identical-outpu
 	try {
 	    return URLEncoder.encode(platformId, "UTF-8")
-	    .replaceAll("\\+", "%20")
-	    .replaceAll("\\%21", "!")
-	    .replaceAll("\\%27", "'")
-	    .replaceAll("\\%28", "(")
-	    .replaceAll("\\%29", ")")
-	    .replaceAll("\\%7E", "~");
+	    	    .replaceAll("\\+", "%20")
+//	    	    .replaceAll("\\%21", "!")
+//	    	    .replaceAll("\\%27", "'")
+//	    	    .replaceAll("\\%28", "(")
+//	    	    .replaceAll("\\%29", ")")
+//	    	    .replaceAll("\\%7E", "~")
+	    	    .replaceAll("\\%..", "");
 	} catch (UnsupportedEncodingException e) {
 	    return platformId;
 	}
