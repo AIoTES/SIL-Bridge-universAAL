@@ -1,9 +1,12 @@
-Remote API Manager
+universAAL IoT Bridge
 
 Copyright 2019 ITACA-SABIEN, http://www.tsb.upv.es
 Instituto Tecnologico de Aplicaciones de Comunicacion 
 Avanzadas - Grupo Tecnologias para la Salud y el 
 Bienestar (SABIEN)
+
+Copyright 2020 Universidad Politécnica de Madrid, http://www.upm.es
+Life Supporting Technologies
 
 I. Included Software
 
